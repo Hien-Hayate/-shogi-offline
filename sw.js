@@ -1,8 +1,8 @@
 // A versioned, complete application shell. No GitHub or credential requests
 // enter Cache Storage. Scope is only offline/shogi/, never Streamlit.
-const VERSION='banjo-shogi-shell-stage18-1-v1';
+const VERSION='banjo-shogi-shell-stage18-1a-v1';
 const SHELL=['./','./index.html','./style.css','./app.js','./core.js','./storage.js','./github.js','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
-self.addEventListener('install',event=>event.waitUntil(caches.open(VERSION).then(cache=>cache.addAll(SHELL))));
+self.addEventListener('install',event=>event.waitUntil(caches.open(VERSION).then(cache=>cache.addAll(SHELL.map(path=>new Request(new URL(path,self.registration.scope),{cache:'reload'}))))));
 // Keep the old worker running until all its windows are closed. This avoids
 // mixing cached modules from different releases in an open editor.
 self.addEventListener('activate',event=>event.waitUntil((async()=>{for(const name of await caches.keys())if(name.startsWith('banjo-shogi-shell-')&&name!==VERSION)await caches.delete(name);await self.clients.claim();})()));

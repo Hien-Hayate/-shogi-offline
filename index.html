@@ -2,17 +2,20 @@
 <html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#263a30"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="将棋定跡">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.github.com; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
-<title>将棋定跡研究室｜Stage18-1</title><link rel="manifest" href="./manifest.webmanifest"><link rel="apple-touch-icon" href="./icon-192.png"><link rel="stylesheet" href="./style.css"></head>
+<title>将棋定跡研究室｜Stage18-1A</title><link rel="manifest" href="./manifest.webmanifest"><link rel="apple-touch-icon" href="./icon-192.png"><link rel="stylesheet" href="./style.css"></head>
 <body><main id="app">
-<header><div><small>盤上研究室 · Stage18-1 暫定版</small><h1>将棋定跡研究室</h1></div><button id="menu" aria-label="データと設定を開く">保存・設定</button></header>
+<header><div><small>盤上研究室 · Stage18-1A 暫定版</small><h1>将棋定跡研究室</h1></div><button id="menu" aria-label="データと設定を開く">保存・設定</button></header>
 <div class="status"><span id="offline">オフライン準備中</span><span id="saved" role="status">起動中…</span></div>
 <div id="notice" role="alert" hidden></div>
 <label class="opening">定跡<select id="opening" disabled></select></label>
 <div id="turn" class="turn"></div>
+<div id="playArea" class="play-area">
 <section id="topHand" class="hand" aria-label="上側の持ち駒"></section>
 <div id="files" class="files"></div>
-<div class="board-wrap"><div id="board" class="board" role="group" aria-label="将棋盤"></div><svg id="arrows" viewBox="0 0 900 900" aria-hidden="true"><defs><marker id="normal-arrow" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5" fill="#24689c"/></marker><marker id="main-arrow" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5" fill="#1f7d51"/></marker><marker id="bad-arrow" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5" fill="#b34239"/></marker></defs><g id="arrowLines"></g></svg></div>
+<div class="board-wrap"><div id="board" class="board" role="group" aria-label="将棋盤"></div></div>
 <section id="bottomHand" class="hand" aria-label="下側の持ち駒"></section>
+<svg id="arrows" aria-hidden="true"><defs><pattern id="bad-arrow-stripes" patternUnits="userSpaceOnUse" width="15" height="1"><rect x="10" width="5" height="1" fill="rgba(40,88,180,0.08)"/><rect width="10" height="1" fill="rgba(40,88,180,0.48)"/></pattern></defs><g id="arrowLines"></g></svg>
+</div>
 <nav class="tools"><button id="back" disabled>◀ 戻る</button><button id="forward" disabled>進む ▶</button><button id="flip">反転</button><button id="root">初期盤面</button><button id="attributes">属性</button></nav>
 <section class="candidates"><div class="section-title"><h2>候補手</h2><button id="graph">定跡全体図</button></div><div id="candidates"></div></section>
 <section class="comment"><div class="section-title"><h2>局面コメント</h2><button id="editComment">編集</button><button id="editEval">評価値 <span id="eval">未設定</span></button></div><p id="comment"></p></section>

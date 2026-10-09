@@ -67,12 +67,44 @@ function renderHand(id,side,p){
 }
 function renderArrows(list){
   const g=$('arrowLines');g.replaceChildren();
-  const xy=([r,c])=>view.flip?[850-c*100,850-r*100]:[50+c*100,50+r*100];
-  for(const m of list){const [x2,y2]=xy(m.destination);if(m.source){const [x1,y1]=xy(m.source),line=document.createElementNS(svgNS,'line'),length=Math.hypot(x2-x1,y2-y1),ux=(x2-x1)/length,uy=(y2-y1)/length;
-      for(const [k,v]of Object.entries({x1:x1+ux*22,y1:y1+uy*22,x2:x2-ux*20,y2:y2-uy*20,stroke:m.move_type==='main'?'#1f7d51':m.move_type==='bad'?'#b34239':'#24689c','stroke-width':m.move_type==='main'?9:6,'marker-end':`url(#${m.move_type}-arrow)`}))line.setAttribute(k,v);g.append(line);
-    }else{const circle=document.createElementNS(svgNS,'circle');circle.setAttribute('cx',x2);circle.setAttribute('cy',y2);circle.setAttribute('r',22);circle.setAttribute('fill','none');circle.setAttribute('stroke',m.move_type==='bad'?'#b34239':m.move_type==='main'?'#1f7d51':'#24689c');circle.setAttribute('stroke-width',6);g.append(circle);}
+  // One overlay spans both hands and the board. Actual element rectangles keep
+  // drop arrows aligned even when hand buttons wrap or the board is flipped.
+  const area=$('playArea').getBoundingClientRect(),board=$('board').getBoundingClientRect();
+  if(!area.width||!area.height||!board.width||!board.height)return;
+  $('arrows').setAttribute('viewBox',`0 0 ${area.width} ${area.height}`);
+  const xy=([r,c])=>[board.left-area.left+((view.flip?8-c:c)+.5)*board.width/9,board.top-area.top+((view.flip?8-r:r)+.5)*board.height/9];
+  const priority={main:2,normal:1,bad:0},paths=new Map();
+  for(const m of list){
+    const path=(m.source?m.source.join(','):m.piece_kind+'*')+'>'+m.destination.join(',');
+    if(!paths.has(path)||priority[m.move_type]>priority[paths.get(path).move_type])paths.set(path,m);
+  }
+  const node=(tag,attrs)=>{const n=document.createElementNS(svgNS,tag);for(const [k,v]of Object.entries(attrs))n.setAttribute(k,v);return n;};
+  // Pixel dimensions, colors and opacities match Stage17-4I's CSS polygons.
+  const shape=(length,height,head,low,high)=>`0,${height*low} ${length-head},${height*low} ${length-head},0 ${length},${height/2} ${length-head},${height} ${length-head},${height*high} 0,${height*high}`;
+  for(const m of paths.values()){
+    let origin;
+    if(m.source)origin=xy(m.source);
+    else{
+      const hand=$((m.side===(view.flip?'gote':'sente'))?'bottomHand':'topHand');
+      const button=Array.from(hand.children).find(n=>n.dataset.hand===m.piece_kind);if(!button)continue;
+      const rect=button.getBoundingClientRect();origin=[rect.left-area.left+rect.width/2,rect.top-area.top+rect.height/2];
+    }
+    const [x1,y1]=origin,[x2,y2]=xy(m.destination),length=Math.hypot(x2-x1,y2-y1);if(length<18)continue;
+    const main=m.move_type==='main',bad=m.move_type==='bad',height=main?30:22,innerHeight=main?22:16;
+    const group=node('g',{'class':'candidate-arrow '+m.move_type,'data-origin':m.source?square(m.source):m.piece_kind+'*','data-destination':square(m.destination),transform:`translate(${x1} ${y1}) rotate(${Math.atan2(y2-y1,x2-x1)*180/Math.PI}) translate(0 ${-height/2})`});
+    group.append(node('polygon',{'class':'arrow-outline',points:shape(length,height,14,.36,.64),fill:main?'rgba(45,30,20,0.48)':'rgba(45,30,20,0.38)'}));
+    group.append(node('polygon',{'class':'arrow-color',points:shape(length-4,innerHeight,11,.35,.65),transform:`translate(2 ${main?4:3})`,fill:bad?'url(#bad-arrow-stripes)':main?'rgba(230,55,55,0.48)':'rgba(230,55,55,0.30)'}));
+    if(bad){
+      const mark=node('g',{'class':'arrow-bad-mark',transform:`translate(${length-19.5} ${height/2})`});
+      mark.append(node('circle',{r:7,fill:'rgba(25,55,120,0.92)',stroke:'rgba(255,255,255,0.82)','stroke-width':1}));
+      const cross=node('text',{x:0,y:0,'text-anchor':'middle','dominant-baseline':'central',fill:'white','font-family':'sans-serif','font-size':12,'font-weight':900});cross.textContent='×';mark.append(cross);group.append(mark);
+    }
+    g.append(group);
   }
 }
+function redrawArrows(){if(ready)renderArrows(candidates(data,currentID()));}
+window.addEventListener('resize',redrawArrows);
+if(typeof ResizeObserver!=='undefined'){const observer=new ResizeObserver(redrawArrows);observer.observe($('playArea'));}
 function tapSquare(r,c){
   editable();const p=boardPosition();
   if(selection&&legalTargets(p,selection.source,selection.kind).some(([rr,cc])=>rr===r&&cc===c)){
