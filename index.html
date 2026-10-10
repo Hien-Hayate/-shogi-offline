@@ -2,9 +2,9 @@
 <html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#263a30"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="将棋定跡">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.github.com; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
-<title>将棋定跡研究室｜Stage18-1C</title><link rel="manifest" href="./manifest.webmanifest"><link rel="apple-touch-icon" href="./icon-192.png"><link rel="stylesheet" href="./style.css"></head>
+<title>将棋定跡研究室｜Stage18-1D</title><link rel="manifest" href="./manifest.webmanifest"><link rel="apple-touch-icon" href="./icon-192.png"><link rel="stylesheet" href="./style.css"></head>
 <body><main id="app">
-<header><div><small>盤上研究室 · Stage18-1C 暫定版</small><h1>将棋定跡研究室</h1></div><button id="menu" aria-label="データと設定を開く">保存・設定</button></header>
+<header><div><small>盤上研究室 · Stage18-1D 暫定版</small><h1>将棋定跡研究室</h1></div><button id="menu" aria-label="データと設定を開く">保存・設定</button></header>
 <div class="status"><span id="offline">オフライン準備中</span><span id="saved" role="status">起動中…</span></div>
 <div id="notice" role="alert" hidden></div>
 <label class="opening">定跡<select id="opening" disabled></select></label>
@@ -18,7 +18,7 @@
 </div>
 <section class="candidates" aria-label="候補手"><div id="candidates"></div></section>
 <section class="position-notes" aria-label="局面のコメントと評価値">
-<button type="button" id="comment" class="comment-box" aria-label="局面コメントを編集"></button>
+<button type="button" id="comment" class="comment-box" aria-label="局面コメントを編集"><span id="commentText" class="comment-text"></span></button>
 <button type="button" id="editEval" class="evaluation-box" aria-label="局面評価値を編集"><span class="evaluation-label">評価値</span><span id="eval" class="evaluation-value">未設定</span></button>
 </section>
 <nav class="tools" aria-label="局面の閲覧と操作"><button id="back" disabled>◀ 戻る</button><button id="forward" disabled>進む ▶</button><button id="flip">反転</button><button id="root">初期盤面</button><button id="attributes">属性</button><button id="graph" aria-label="定跡全体図">全体図</button></nav>

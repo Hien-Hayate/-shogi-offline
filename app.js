@@ -57,7 +57,9 @@ function render(){
   $('candidates').replaceChildren();
   for(const m of list){const b=button(moveLabel(m,p),()=>{editable();navigate(m.to_position_id,m.move_id);},m.move_type);b.dataset.move=m.move_id;if(m.move_type!=='normal')b.append(el('span',m.move_type==='main'?'本線':'悪手','badge'));$('candidates').append(b);}
   if(!list.length)$('candidates').append(el('span','登録手はありません。盤面から入力できます。','muted'));
-  $('comment').textContent=current().comment||'（コメントなし）';const evaluation=current().evaluation;$('eval').textContent=evaluation===null?'未設定':(evaluation>0?'+':'')+evaluation;
+  const comment=current().comment||'（コメントなし）',commentChanged=$('comment').dataset.position!==pid||$('commentText').textContent!==comment;
+  $('commentText').textContent=comment;if(commentChanged)$('comment').scrollTop=0;$('comment').dataset.position=pid;
+  const evaluation=current().evaluation;$('eval').textContent=evaluation===null?'未設定':(evaluation>0?'+':'')+evaluation;
   renderArrows(list);
 }
 function renderHand(id,side,p){
