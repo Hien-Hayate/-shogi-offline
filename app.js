@@ -11,9 +11,11 @@ function editable(){if(storageError)throw new Error('保存が停止していま
 function current(){return data.positions[currentID()];}
 function currentID(){return session().positions[session().cursor];}
 function session(){return view.sessions[data.active_opening_id];}
-function resetView(d){return {sessions:Object.fromEntries(Object.values(d.openings).map(o=>[o.opening_id,{positions:[o.start_position_id],moves:[],cursor:0}])),flip:false,boardStyle:'text',draft:null};}
+function boardPalettes(){return [{id:'wood',name:'木色・やわらか'}, {id:'crisp',name:'木色・くっきり'}, {id:'reverse',name:'明るい盤・濃い駒'}, {id:'natural',name:'淡い木色'}, {id:'walnut',name:'落ち着いた茶色'}];}
+function resetView(d){return {sessions:Object.fromEntries(Object.values(d.openings).map(o=>[o.opening_id,{positions:[o.start_position_id],moves:[],cursor:0}])),flip:false,boardStyle:'text',boardPalette:'wood',draft:null};}
 function normalizeView(d,v){
   const out=resetView(d);out.flip=!!v?.flip;out.boardStyle=v?.boardStyle==='pieces'?'pieces':'text';
+  out.boardPalette=boardPalettes().some(p=>p.id===v?.boardPalette)?v.boardPalette:'wood';
   for(const [oid,o]of Object.entries(d.openings)){
     const s=v?.sessions?.[oid];if(!s||!Array.isArray(s.positions)||!Array.isArray(s.moves)||s.positions.length!==s.moves.length+1||!Number.isInteger(s.cursor)||s.cursor<0||s.cursor>=s.positions.length)continue;
     if(d.positions[s.positions[0]]?.opening_id!==oid)continue;
@@ -39,6 +41,7 @@ function render(){
   const select=$('opening');select.replaceChildren();for(const o of Object.values(data.openings)){const option=el('option',o.name);option.value=o.opening_id;select.append(option);}select.value=data.active_opening_id;select.disabled=busy||storageError;
   const p=boardPosition(),pid=currentID(),s=session(),list=candidates(data,pid);
   $('playArea').dataset.boardStyle=view.boardStyle;$('boardStyle').textContent=view.boardStyle==='pieces'?'文字表示へ':'駒表示へ';$('boardStyle').setAttribute('aria-pressed',String(view.boardStyle==='pieces'));$('boardStyle').disabled=busy||storageError;
+  $('playArea').dataset.boardPalette=view.boardPalette||'wood';
   $('turn').textContent=(p.turn==='sente'?'▲ 先手':'△ 後手')+'番 · '+s.cursor+'手の閲覧履歴'+(inCheck(p,p.turn)?' · 王手':'');
   $('back').disabled=s.cursor===0||busy;$('forward').disabled=s.cursor===s.positions.length-1||busy;
   $('files').replaceChildren(...Array.from({length:9},(_,i)=>el('span',view.flip?i+1:9-i)));
@@ -176,11 +179,24 @@ function exportJSON(){validateDocument(data);download('shogi_stage18_1_'+stamp()
 async function exportWorkspace(){const payload={document:encodeDocument(data),view:copy(view)};download('shogi_workspace_stage18_1_'+stamp()+'.json',{format:'banjo_lab_shogi_offline_workspace',workspace_version:1,payload_sha256:await sha256(stableJSON(payload)),payload});}
 function menu(){
   openDialog('保存・設定','menu');
+  paletteSettings();
   $('dialogBody').append(el('p','端末には入力ごとに自動保存します。GitHubへの保存はオンライン時に操作してください。'));
   const actions=el('div',undefined,'actions');actions.append(button('JSON書き出し（スキーマ3）',exportJSON,'primary'),button('端末バックアップ（履歴込み）',exportWorkspace),button('JSON取り込み',()=>{editable();$('importFile').click();}),button('GitHub読込・保存',githubPanel),button('新しい定跡',newOpening),button('定跡名を変更',renameOpening),button('置換前のデータを復元',restoreBeforeReplace),button('端末の保存保持を要求',requestPersistence));$('dialogBody').append(actions);
   const status=sync.baselines?.[sync.config?destinationKey(sync.config):''];$('dialogBody').append(el('p',status?'GitHub保存: '+(status.signature===contentSignature(data)?'同期済み':'端末に未送信の変更があります'):'GitHub保存の基準は未設定です。'));
   $('dialogBody').append(el('p','iPhoneはSafariでHTTPSのページを開き、共有メニューからホーム画面に追加します。追加したアイコンから起動して「オフライン準備完了」を確認し、その画面でJSONを取り込んでください。'));
   if(view.draft)$('dialogBody').append(button('途中の編集を再開',()=>{const draft=view.draft;data.active_opening_id=data.positions[draft.pid].opening_id;const s=session();const i=s.positions.indexOf(draft.pid);if(i>=0)s.cursor=i;else view.sessions[data.active_opening_id]={positions:[draft.pid],moves:[],cursor:0};persist();render();editPosition(draft.kind);},'primary'));
+}
+function paletteSettings(){
+  $('dialogBody').append(el('h2','盤・駒の配色'));
+  const choices=el('div',undefined,'palette-choices');choices.setAttribute('role','group');choices.setAttribute('aria-label','盤と駒の配色を選択');
+  for(const palette of boardPalettes()){
+    const b=button('',()=>{editable();view.boardPalette=palette.id;persist();render();for(const n of choices.children)n.setAttribute('aria-pressed',String(n.dataset.boardPalette===palette.id));},'palette-choice');
+    b.dataset.boardPalette=palette.id;b.setAttribute('aria-label',palette.name);b.setAttribute('aria-pressed',String(view.boardPalette===palette.id));b.disabled=busy||storageError;
+    const preview=el('span',undefined,'palette-preview');preview.setAttribute('aria-hidden','true');
+    for(let i=0;i<9;i++){const cell=el('span',undefined,'palette-cell');if([0,4,8].includes(i))cell.append(el('span',['歩','銀','角'][i/4],'palette-piece'+(i===0?' gote':'')));preview.append(cell);}
+    b.append(preview,el('span',palette.name,'palette-name'));choices.append(b);
+  }
+  $('dialogBody').append(choices,el('p','選ぶとすぐに反映され、端末に保存されます。文字表示と駒表示の両方に適用します。','hint'));
 }
 function newOpening(){editable();openDialog('新しい定跡');const input=el('input');input.id='openingName';input.placeholder='定跡名';$('dialogBody').append(input,button('作成',()=>{editable();const name=input.value.trim();if(!name)throw new Error('定跡名を入力してください');const oid=nextID(data.openings,'opening'),pid=nextID(data.positions,'position'),p=parseSFEN(INITIAL);data.openings[oid]={opening_id:oid,name,start_position_id:pid};data.positions[pid]={position_id:pid,opening_id:oid,sfen:INITIAL,sfen_key:key(p),move_number:1,comment:'',evaluation:null};data.active_opening_id=oid;view.sessions[oid]={positions:[pid],moves:[],cursor:0};persist({changed:true});closeDialog();render();},'primary'));}
 function renameOpening(){editable();openDialog('定跡名を変更');const input=el('input');input.value=data.openings[data.active_opening_id].name;$('dialogBody').append(input,button('変更',()=>{editable();const name=input.value.trim();if(!name)throw new Error('定跡名を入力してください');data.openings[data.active_opening_id].name=name;persist({changed:true});closeDialog();render();},'primary'));}
