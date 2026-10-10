@@ -43,6 +43,7 @@ function render(){
   $('back').disabled=s.cursor===0||busy;$('forward').disabled=s.cursor===s.positions.length-1||busy;
   $('files').replaceChildren(...Array.from({length:9},(_,i)=>el('span',view.flip?i+1:9-i)));
   const targets=selection?legalTargets(p,selection.source,selection.kind):[];
+  const last=s.cursor?data.moves[s.moves[s.cursor-1]]:null;
   const board=$('board');board.replaceChildren();
   for(let i=0;i<81;i++){
     const rr=Math.floor(i/9),cc=i%9,r=view.flip?8-rr:rr,c=view.flip?8-cc:cc,pc=p.board[r][c];
@@ -50,7 +51,8 @@ function render(){
     if(pc){const node=el('span',pc.promoted?PROMOTED[pc.kind]:LABEL[pc.kind],'piece'+(pc.promoted?' promoted':'')+(pc.owner===(view.flip?'sente':'gote')?' gote':''));b.append(node);}
     if(selection?.source?.[0]===r&&selection.source[1]===c)b.classList.add('selected');
     if(targets.some(([tr,tc])=>tr===r&&tc===c))b.classList.add('target');
-    const last=s.cursor?data.moves[s.moves[s.cursor-1]]:null;if(last?.destination[0]===r&&last.destination[1]===c)b.classList.add('last');
+    const lastFrom=last?.source?.[0]===r&&last.source[1]===c,lastTo=last?.destination[0]===r&&last.destination[1]===c;
+    if(lastFrom||lastTo){b.classList.add('last');b.setAttribute('aria-label',b.getAttribute('aria-label')+(lastFrom?'（直前の移動元）':'（直前の移動先）'));}
     board.append(b);
   }
   renderHand('topHand',view.flip?'sente':'gote',p);renderHand('bottomHand',view.flip?'gote':'sente',p);
