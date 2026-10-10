@@ -56,7 +56,7 @@ function render(){
   $('candidates').replaceChildren();
   for(const m of list){const b=button(moveLabel(m,p),()=>{editable();navigate(m.to_position_id,m.move_id);},m.move_type);b.dataset.move=m.move_id;if(m.move_type!=='normal')b.append(el('span',m.move_type==='main'?'本線':'悪手','badge'));$('candidates').append(b);}
   if(!list.length)$('candidates').append(el('span','登録手はありません。盤面から入力できます。','muted'));
-  $('comment').textContent=current().comment||'（コメントなし）';$('eval').textContent=current().evaluation??'未設定';
+  $('comment').textContent=current().comment||'（コメントなし）';const evaluation=current().evaluation;$('eval').textContent=evaluation===null?'未設定':(evaluation>0?'+':'')+evaluation;
   renderArrows(list);
 }
 function renderHand(id,side,p){
@@ -214,7 +214,7 @@ async function githubOperation(operation){
     }
   }finally{const input=$('ghToken');if(input)input.value='';busy=false;render();}
 }
-$('menu').onclick=()=>action(menu);$('editComment').onclick=()=>action(()=>editPosition('comment'));$('editEval').onclick=()=>action(()=>editPosition('evaluation'));$('attributes').onclick=()=>action(attributes);$('graph').onclick=()=>action(graph);
+$('menu').onclick=()=>action(menu);$('comment').onclick=()=>action(()=>editPosition('comment'));$('editEval').onclick=()=>action(()=>editPosition('evaluation'));$('attributes').onclick=()=>action(attributes);$('graph').onclick=()=>action(graph);
 $('back').onclick=()=>action(()=>{editable();session().cursor--;selection=null;persist();render();});$('forward').onclick=()=>action(()=>{editable();session().cursor++;selection=null;persist();render();});$('root').onclick=()=>action(goRoot);$('flip').onclick=()=>action(()=>{editable();view.flip=!view.flip;persist();render();});
 $('opening').onchange=()=>action(()=>{editable();data.active_opening_id=$('opening').value;selection=null;persist();render();});
 function onHide(){const input=$('ghToken');if(input)input.value='';if(ready&&!storageError)journal();}
