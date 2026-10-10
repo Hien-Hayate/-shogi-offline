@@ -11,9 +11,9 @@ function editable(){if(storageError)throw new Error('保存が停止していま
 function current(){return data.positions[currentID()];}
 function currentID(){return session().positions[session().cursor];}
 function session(){return view.sessions[data.active_opening_id];}
-function resetView(d){return {sessions:Object.fromEntries(Object.values(d.openings).map(o=>[o.opening_id,{positions:[o.start_position_id],moves:[],cursor:0}])),flip:false,draft:null};}
+function resetView(d){return {sessions:Object.fromEntries(Object.values(d.openings).map(o=>[o.opening_id,{positions:[o.start_position_id],moves:[],cursor:0}])),flip:false,boardStyle:'text',draft:null};}
 function normalizeView(d,v){
-  const out=resetView(d);out.flip=!!v?.flip;
+  const out=resetView(d);out.flip=!!v?.flip;out.boardStyle=v?.boardStyle==='pieces'?'pieces':'text';
   for(const [oid,o]of Object.entries(d.openings)){
     const s=v?.sessions?.[oid];if(!s||!Array.isArray(s.positions)||!Array.isArray(s.moves)||s.positions.length!==s.moves.length+1||!Number.isInteger(s.cursor)||s.cursor<0||s.cursor>=s.positions.length)continue;
     if(d.positions[s.positions[0]]?.opening_id!==oid)continue;
@@ -38,6 +38,7 @@ function render(){
   if(!ready)return;
   const select=$('opening');select.replaceChildren();for(const o of Object.values(data.openings)){const option=el('option',o.name);option.value=o.opening_id;select.append(option);}select.value=data.active_opening_id;select.disabled=busy||storageError;
   const p=boardPosition(),pid=currentID(),s=session(),list=candidates(data,pid);
+  $('playArea').dataset.boardStyle=view.boardStyle;$('boardStyle').textContent=view.boardStyle==='pieces'?'文字表示へ':'駒表示へ';$('boardStyle').setAttribute('aria-pressed',String(view.boardStyle==='pieces'));$('boardStyle').disabled=busy||storageError;
   $('turn').textContent=(p.turn==='sente'?'▲ 先手':'△ 後手')+'番 · '+s.cursor+'手の閲覧履歴'+(inCheck(p,p.turn)?' · 王手':'');
   $('back').disabled=s.cursor===0||busy;$('forward').disabled=s.cursor===s.positions.length-1||busy;
   $('files').replaceChildren(...Array.from({length:9},(_,i)=>el('span',view.flip?i+1:9-i)));
@@ -62,7 +63,7 @@ function render(){
 function renderHand(id,side,p){
   const wrap=$(id);wrap.replaceChildren(el('b',side==='sente'?'先手':'後手'));let count=0;
   for(const kind of HAND){const n=p.hands[side][kind];if(!n)continue;count++;
-    const b=button(LABEL[kind]+(n>1?n:''),()=>{editable();selection={source:null,kind};render();});b.disabled=p.turn!==side||busy||storageError;if(selection?.source===null&&selection.kind===kind&&p.turn===side)b.classList.add('active');b.dataset.hand=kind;wrap.append(b);
+    const b=button('',()=>{editable();selection={source:null,kind};render();});b.append(el('span',LABEL[kind],'hand-piece'));if(n>1)b.append(el('span',String(n),'hand-count'));b.setAttribute('aria-label',(side==='sente'?'先手':'後手')+'の持ち駒 '+LABEL[kind]+n+'枚');b.disabled=p.turn!==side||busy||storageError;if(selection?.source===null&&selection.kind===kind&&p.turn===side)b.classList.add('active');b.dataset.hand=kind;wrap.append(b);
   }if(!count)wrap.append(el('span','持ち駒なし','empty'));
 }
 function renderArrows(list){
@@ -216,6 +217,7 @@ async function githubOperation(operation){
 }
 $('menu').onclick=()=>action(menu);$('comment').onclick=()=>action(()=>editPosition('comment'));$('editEval').onclick=()=>action(()=>editPosition('evaluation'));$('attributes').onclick=()=>action(attributes);$('graph').onclick=()=>action(graph);
 $('back').onclick=()=>action(()=>{editable();session().cursor--;selection=null;persist();render();});$('forward').onclick=()=>action(()=>{editable();session().cursor++;selection=null;persist();render();});$('root').onclick=()=>action(goRoot);$('flip').onclick=()=>action(()=>{editable();view.flip=!view.flip;persist();render();});
+$('boardStyle').onclick=()=>action(()=>{editable();view.boardStyle=view.boardStyle==='pieces'?'text':'pieces';persist();render();});
 $('opening').onchange=()=>action(()=>{editable();data.active_opening_id=$('opening').value;selection=null;persist();render();});
 function onHide(){const input=$('ghToken');if(input)input.value='';if(ready&&!storageError)journal();}
 document.addEventListener('visibilitychange',()=>{if(document.hidden)onHide();});window.addEventListener('pagehide',onHide);window.addEventListener('pageshow',()=>{if(ready)render();});
