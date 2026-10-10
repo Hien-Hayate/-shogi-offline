@@ -70,7 +70,7 @@ function render(){
 function renderHand(id,side,p){
   const wrap=$(id);wrap.replaceChildren(el('b',side==='sente'?'先手':'後手'));let count=0;
   for(const kind of HAND){const n=p.hands[side][kind];if(!n)continue;count++;
-    const b=button('',()=>{editable();selection={source:null,kind};render();});b.append(el('span',LABEL[kind],'hand-piece'));if(n>1)b.append(el('span',String(n),'hand-count'));b.setAttribute('aria-label',(side==='sente'?'先手':'後手')+'の持ち駒 '+LABEL[kind]+n+'枚');b.disabled=p.turn!==side||busy||storageError;if(selection?.source===null&&selection.kind===kind&&p.turn===side)b.classList.add('active');b.dataset.hand=kind;wrap.append(b);
+    const b=button('',()=>{editable();selection={source:null,kind};render();});b.append(el('span',LABEL[kind],'hand-piece'+(side===(view.flip?'sente':'gote')?' gote':'')));if(n>1)b.append(el('span',String(n),'hand-count'));b.setAttribute('aria-label',(side==='sente'?'先手':'後手')+'の持ち駒 '+LABEL[kind]+n+'枚');b.disabled=p.turn!==side||busy||storageError;if(selection?.source===null&&selection.kind===kind&&p.turn===side)b.classList.add('active');b.dataset.hand=kind;wrap.append(b);
   }if(!count)wrap.append(el('span','持ち駒なし','empty'));
 }
 function renderArrows(list){
