@@ -64,7 +64,9 @@ function render(){
   if(!list.length)$('candidates').append(el('span','登録手はありません。盤面から入力できます。','muted'));
   const comment=current().comment||'（コメントなし）',commentChanged=$('comment').dataset.position!==pid||$('commentText').textContent!==comment;
   $('commentText').textContent=comment;if(commentChanged)$('comment').scrollTop=0;$('comment').dataset.position=pid;
-  const evaluation=current().evaluation;$('eval').textContent=evaluation===null?'未設定':(evaluation>0?'+':'')+evaluation;
+  const evaluation=current().evaluation,value=evaluation===null?'未設定':(evaluation>0?'+':'')+evaluation;
+  $('eval').textContent=value;
+  $('eval').dataset.size=evaluation===null||value.length<=4?'normal':value.length===5?'four':value.length===6?'five':'long';
   renderArrows(list);
 }
 function renderHand(id,side,p){
@@ -133,8 +135,19 @@ function editPosition(kind){
   editable();const pid=currentID(),record=current(),draft=view.draft?.pid===pid&&view.draft.kind===kind?view.draft:null;
   openDialog(kind==='comment'?'局面コメント':'局面評価値','editor');
   const input=el(kind==='comment'?'textarea':'input');input.id='editor';if(kind==='evaluation'){input.type='text';input.inputMode='numeric';}
-  input.value=draft?draft.text:kind==='comment'?record.comment:record.evaluation??'';$('dialogBody').append(input);
+  input.value=String(draft?draft.text:kind==='comment'?record.comment:record.evaluation??'');$('dialogBody').append(input);
   input.oninput=()=>{view.draft={pid,kind,text:input.value};persist();};
+  if(kind==='evaluation'){
+    const row=el('div',undefined,'evaluation-input-row'),sign=button('＋／−',()=>{
+      editable();const text=input.value.trim();
+      input.value=text.startsWith('-')?text.slice(1):'-'+text;
+      input.oninput();input.focus();
+      if(input.setSelectionRange)input.setSelectionRange(input.value.length,input.value.length);
+    });
+    sign.id='evalSign';sign.type='button';sign.setAttribute('aria-label','評価値のプラス・マイナスを切り替える');
+    sign.onpointerdown=event=>event.preventDefault();
+    row.append(input,sign);$('dialogBody').replaceChildren(el('h2','局面評価値'),row);
+  }
   const actions=el('div',undefined,'actions');actions.append(button('確定',()=>{editable();if(kind==='evaluation'&&input.value.trim()&&!/^-?\d+$/.test(input.value.trim()))throw new Error('評価値は整数または空欄で入力してください');const v=kind==='comment'?input.value:input.value.trim()?Number(input.value):null;if(kind==='evaluation'&&v!==null&&!Number.isSafeInteger(v))throw new Error('評価値が大きすぎます');record[kind]=v;view.draft=null;persist({changed:true});closeDialog();render();},'primary'),button('入力を破棄',()=>{view.draft=null;persist();closeDialog();}));$('dialogBody').append(actions);input.focus();
 }
 function attributes(){
