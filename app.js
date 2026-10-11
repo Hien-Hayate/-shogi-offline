@@ -80,7 +80,7 @@ function renderHand(id,side,p){
 function renderArrows(list){
   const g=$('arrowLines');g.replaceChildren();
   // One overlay spans both hands and the board. Actual element rectangles keep
-  // drop arrows aligned even when hand buttons wrap or the board is flipped.
+  // drop arrows aligned when the hand row scrolls or the board is flipped.
   const area=$('playArea').getBoundingClientRect(),board=$('board').getBoundingClientRect();
   if(!area.width||!area.height||!board.width||!board.height)return;
   $('arrows').setAttribute('viewBox',`0 0 ${area.width} ${area.height}`);
@@ -99,7 +99,9 @@ function renderArrows(list){
     else{
       const hand=$((m.side===(view.flip?'gote':'sente'))?'bottomHand':'topHand');
       const button=Array.from(hand.children).find(n=>n.dataset.hand===m.piece_kind);if(!button)continue;
-      const rect=button.getBoundingClientRect();origin=[rect.left-area.left+rect.width/2,rect.top-area.top+rect.height/2];
+      const rect=button.getBoundingClientRect(),bounds=hand.getBoundingClientRect(),center=rect.left+rect.width/2;
+      if(center<bounds.left||center>bounds.left+bounds.width)continue;
+      origin=[center-area.left,rect.top-area.top+rect.height/2];
     }
     const [x1,y1]=origin,[x2,y2]=xy(m.destination),length=Math.hypot(x2-x1,y2-y1);if(length<18)continue;
     const main=m.move_type==='main',bad=m.move_type==='bad',height=main?30:22,innerHeight=main?22:16;
@@ -116,6 +118,7 @@ function renderArrows(list){
 }
 function redrawArrows(){if(ready)renderArrows(candidates(data,currentID()));}
 window.addEventListener('resize',redrawArrows);
+$('topHand').addEventListener('scroll',redrawArrows,{passive:true});$('bottomHand').addEventListener('scroll',redrawArrows,{passive:true});
 if(typeof ResizeObserver!=='undefined'){const observer=new ResizeObserver(redrawArrows);observer.observe($('playArea'));}
 function tapSquare(r,c){
   editable();const p=boardPosition();

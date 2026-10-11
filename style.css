@@ -58,3 +58,7 @@ dialog .evaluation-input-row input{min-width:0;flex:1}
 #candidates button{flex:0 0 auto;width:100%;min-width:0;min-height:40px;padding:7px 3px;text-align:center;white-space:normal;overflow-wrap:anywhere;line-height:1.4}
 #candidates .badge{display:block;margin-left:0}
 #candidates .muted{font-size:11px;line-height:1.6}
+.hand{height:48px;min-height:48px;max-height:48px;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+.hand::-webkit-scrollbar{display:none}
+.hand> *{flex:0 0 auto;white-space:nowrap}
+.play-area[data-board-style="pieces"] .hand{height:54px;min-height:54px;max-height:54px}
