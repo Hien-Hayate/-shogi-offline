@@ -59,9 +59,11 @@ function render(){
     board.append(b);
   }
   renderHand('topHand',view.flip?'sente':'gote',p);renderHand('bottomHand',view.flip?'gote':'sente',p);
+  const candidateChanged=$('candidates').dataset.position!==pid;
   $('candidates').replaceChildren();
   for(const m of list){const b=button(moveLabel(m,p),()=>{editable();navigate(m.to_position_id,m.move_id);},m.move_type);b.dataset.move=m.move_id;if(m.move_type!=='normal')b.append(el('span',m.move_type==='main'?'本線':'悪手','badge'));$('candidates').append(b);}
   if(!list.length)$('candidates').append(el('span','登録手はありません。盤面から入力できます。','muted'));
+  if(candidateChanged)$('candidates').scrollTop=0;$('candidates').dataset.position=pid;
   const comment=current().comment||'（コメントなし）',commentChanged=$('comment').dataset.position!==pid||$('commentText').textContent!==comment;
   $('commentText').textContent=comment;if(commentChanged)$('comment').scrollTop=0;$('comment').dataset.position=pid;
   const evaluation=current().evaluation,value=evaluation===null?'未設定':(evaluation>0?'+':'')+evaluation;
