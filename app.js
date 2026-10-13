@@ -12,9 +12,10 @@ function current(){return data.positions[currentID()];}
 function currentID(){return session().positions[session().cursor];}
 function session(){return view.sessions[data.active_opening_id];}
 function boardPalettes(){return [{id:'wood',name:'木色・やわらか'}, {id:'crisp',name:'木色・くっきり'}, {id:'reverse',name:'明るい盤・濃い駒'}, {id:'natural',name:'淡い木色'}, {id:'walnut',name:'落ち着いた茶色'}];}
-function resetView(d){return {sessions:Object.fromEntries(Object.values(d.openings).map(o=>[o.opening_id,{positions:[o.start_position_id],moves:[],cursor:0}])),flip:false,boardStyle:'text',boardPalette:'wood',draft:null};}
+function resetView(d){return {sessions:Object.fromEntries(Object.values(d.openings).map(o=>[o.opening_id,{positions:[o.start_position_id],moves:[],cursor:0}])),flip:false,boardStyle:'text',boardPalette:'wood',showArrows:true,draft:null};}
 function normalizeView(d,v){
   const out=resetView(d);out.flip=!!v?.flip;out.boardStyle=v?.boardStyle==='pieces'?'pieces':'text';
+  out.showArrows=v?.showArrows!==false;
   out.boardPalette=boardPalettes().some(p=>p.id===v?.boardPalette)?v.boardPalette:'wood';
   for(const [oid,o]of Object.entries(d.openings)){
     const s=v?.sessions?.[oid];if(!s||!Array.isArray(s.positions)||!Array.isArray(s.moves)||s.positions.length!==s.moves.length+1||!Number.isInteger(s.cursor)||s.cursor<0||s.cursor>=s.positions.length)continue;
@@ -42,6 +43,7 @@ function render(){
   const p=boardPosition(),pid=currentID(),s=session(),list=candidates(data,pid);
   $('playArea').dataset.boardStyle=view.boardStyle;$('boardStyle').textContent=view.boardStyle==='pieces'?'文字表示へ':'駒表示へ';$('boardStyle').setAttribute('aria-pressed',String(view.boardStyle==='pieces'));$('boardStyle').disabled=busy||storageError;
   $('playArea').dataset.boardPalette=view.boardPalette||'wood';
+  const showArrows=view.showArrows!==false;$('arrowToggle').textContent=showArrows?'矢印ON':'矢印OFF';$('arrowToggle').setAttribute('aria-pressed',String(showArrows));$('arrowToggle').setAttribute('aria-label',showArrows?'矢印を非表示にする':'矢印を表示する');$('arrowToggle').disabled=busy||storageError;
   $('turn').textContent=(p.turn==='sente'?'▲ 先手':'△ 後手')+'番 · '+s.cursor+'手の閲覧履歴'+(inCheck(p,p.turn)?' · 王手':'');
   $('back').disabled=s.cursor===0||busy;$('forward').disabled=s.cursor===s.positions.length-1||busy;
   $('files').replaceChildren(...Array.from({length:9},(_,i)=>el('span',view.flip?i+1:9-i)));
@@ -79,6 +81,8 @@ function renderHand(id,side,p){
 }
 function renderArrows(list){
   const g=$('arrowLines');g.replaceChildren();
+  $('arrows').setAttribute('visibility',view.showArrows===false?'hidden':'visible');
+  if(view.showArrows===false)return;
   // One overlay spans both hands and the board. Actual element rectangles keep
   // drop arrows aligned when the hand row scrolls or the board is flipped.
   const area=$('playArea').getBoundingClientRect(),board=$('board').getBoundingClientRect();
@@ -304,6 +308,7 @@ async function githubOperation(operation){
 $('menu').onclick=()=>action(menu);$('comment').onclick=()=>action(()=>editPosition('comment'));$('editEval').onclick=()=>action(()=>editPosition('evaluation'));$('attributes').onclick=()=>action(attributes);$('graph').onclick=()=>action(graph);
 $('back').onclick=()=>action(()=>{editable();session().cursor--;selection=null;persist();render();});$('forward').onclick=()=>action(()=>{editable();session().cursor++;selection=null;persist();render();});$('root').onclick=()=>action(goRoot);$('flip').onclick=()=>action(()=>{editable();view.flip=!view.flip;persist();render();});
 $('boardStyle').onclick=()=>action(()=>{editable();view.boardStyle=view.boardStyle==='pieces'?'text':'pieces';persist();render();});
+$('arrowToggle').onclick=()=>action(()=>{editable();view.showArrows=view.showArrows===false;persist();render();});
 $('opening').onchange=()=>action(()=>{editable();data.active_opening_id=$('opening').value;selection=null;persist();render();});
 function onHide(){const input=$('ghToken');if(input)input.value='';if(ready&&!storageError)journal();}
 document.addEventListener('visibilitychange',()=>{if(document.hidden)onHide();});window.addEventListener('pagehide',onHide);window.addEventListener('pageshow',()=>{if(ready)render();});

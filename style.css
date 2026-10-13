@@ -68,3 +68,7 @@ dialog .evaluation-input-row input{min-width:0;flex:1}
 .isolation-excerpt{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere}
 .isolation-preview .board button:disabled{opacity:1;cursor:default}
 .isolation-comment{white-space:pre-wrap;overflow-wrap:anywhere;font-size:16px;line-height:1.6;padding:10px;border:1px solid var(--line);border-radius:8px;background:#202629;max-height:12em;overflow:auto;margin:10px 0}
+#arrowLines{opacity:.85}
+#arrowToggle{width:68px;white-space:nowrap}
+.board-options{flex-wrap:wrap}
+.board-options .turn{flex:1 1 120px}
