@@ -191,6 +191,54 @@ function graph(){
   }
   wrap.append(svg);$('dialogBody').append(el('p',`${all.length}局面 · ${Object.values(data.moves).filter(m=>m.opening_id===oid).length}指し手。線は同一局面の合流も表示します。局面をタップして移動できます。`),wrap);
 }
+function analyzeIsolation(d){
+  const groups=new Map(Object.entries(d.openings).map(([id,o])=>[id,{opening_id:id,name:o.name,start_position_id:o.start_position_id,positions:new Set(),outgoing:new Map()}]));
+  for(const [id,p]of Object.entries(d.positions))groups.get(p.opening_id)?.positions.add(id);
+  for(const m of Object.values(d.moves)){
+    const group=groups.get(m.opening_id);if(!group||!group.positions.has(m.from_position_id)||!group.positions.has(m.to_position_id))continue;
+    const next=group.outgoing.get(m.from_position_id)||[];next.push(m.to_position_id);group.outgoing.set(m.from_position_id,next);
+  }
+  return [...groups.values()].map(group=>{
+    const found=group.positions.has(group.start_position_id),reachable=new Set(),pending=found?[group.start_position_id]:[];
+    while(pending.length){const id=pending.pop();if(reachable.has(id))continue;reachable.add(id);for(const next of group.outgoing.get(id)||[])if(!reachable.has(next))pending.push(next);}
+    return {opening_id:group.opening_id,name:group.name,start_position_id:group.start_position_id,start_position_found:found,position_count:group.positions.size,reachable_count:reachable.size,reachable_position_ids:[...reachable].sort(),orphan_position_ids:[...group.positions].filter(id=>!reachable.has(id)).sort(),orphan_count:group.positions.size-reachable.size};
+  });
+}
+function checkIsolated(page=0,report=analyzeIsolation(data)){
+  const list=report.flatMap(r=>r.orphan_position_ids.map(pid=>({report:r,pid}))),pages=Math.max(1,Math.ceil(list.length/50));page=Math.max(0,Math.min(page,pages-1));
+  openDialog('孤立局面チェック','isolation');
+  $('dialogBody').append(el('p','端末に読み込み済みの全定跡を確認します。開始局面から登録手を順方向にたどれない局面が対象です。チェックと盤面の確認ではデータや閲覧履歴を変更しません。'));
+  const summary=el('p',`${report.length}定跡 · ${report.reduce((n,r)=>n+r.position_count,0)}局面 · 孤立局面 ${list.length}件`);summary.id='isolationSummary';$('dialogBody').append(summary);
+  for(const r of report)$('dialogBody').append(el('p',`${r.name}：到達可能 ${r.reachable_count}／${r.position_count}局面 · 孤立 ${r.orphan_count}件`+(r.start_position_found?'':' · 開始局面を確認できません')));
+  if(!list.length){$('dialogBody').append(el('p','孤立局面はありません。'));return;}
+  $('dialogBody').append(el('p','一覧をタップすると盤面・持ち駒・コメント・評価値を確認できます。'));
+  const rows=el('div',undefined,'isolation-list');
+  for(const entry of list.slice(page*50,(page+1)*50)){
+    const p=data.positions[entry.pid],b=button('',()=>previewIsolated(entry,page,report),'isolation-item');b.dataset.position=entry.pid;
+    b.append(el('strong',entry.report.name+' · '+entry.pid),el('span',p.evaluation===null?'評価値 未設定':'評価値 '+(p.evaluation>0?'+':'')+p.evaluation),el('span',p.comment||'（コメントなし）','isolation-excerpt'));rows.append(b);
+  }
+  $('dialogBody').append(rows,el('p',`${page*50+1}〜${Math.min((page+1)*50,list.length)}件目／${list.length}件`));
+  if(pages>1){const actions=el('div',undefined,'actions'),back=button('前の50件',()=>checkIsolated(page-1,report)),next=button('次の50件',()=>checkIsolated(page+1,report));back.disabled=page===0;next.disabled=page===pages-1;actions.append(back,next);$('dialogBody').append(actions);}
+}
+function previewIsolated(entry,page,report){
+  const record=data.positions[entry.pid],p=parseSFEN(record.sfen);openDialog('孤立局面の確認','isolation-preview');
+  $('dialogBody').append(el('p',entry.report.name+' · '+entry.pid),el('p',(p.turn==='sente'?'▲ 先手':'△ 後手')+'番 · 読み取り専用'));
+  const area=el('div',undefined,'play-area isolation-preview');area.id='isolationPreview';area.dataset.boardStyle=view.boardStyle;area.dataset.boardPalette=view.boardPalette||'wood';
+  const hand=side=>{
+    const row=el('section',undefined,'hand');row.append(el('b',side==='sente'?'先手':'後手'));let count=0;
+    for(const kind of HAND){const n=p.hands[side][kind];if(!n)continue;count++;const b=el('button');b.type='button';b.disabled=true;b.setAttribute('aria-label',(side==='sente'?'先手':'後手')+'の持ち駒 '+LABEL[kind]+n+'枚');b.append(el('span',LABEL[kind],'hand-piece'+(side===(view.flip?'sente':'gote')?' gote':'')));if(n>1)b.append(el('span',String(n),'hand-count'));row.append(b);}
+    if(!count)row.append(el('span','持ち駒なし','empty'));return row;
+  };
+  area.append(hand(view.flip?'sente':'gote'));
+  const wrap=el('div',undefined,'board-wrap'),board=el('div',undefined,'board');board.setAttribute('role','group');board.setAttribute('aria-label','孤立局面の将棋盤');
+  for(let i=0;i<81;i++){
+    const rr=Math.floor(i/9),cc=i%9,r=view.flip?8-rr:rr,c=view.flip?8-cc:cc,pc=p.board[r][c],b=el('button');b.type='button';b.disabled=true;b.setAttribute('aria-label',`${9-c}${'一二三四五六七八九'[r]} ${pc?(pc.owner==='sente'?'先手':'後手')+(pc.promoted?PROMOTED[pc.kind]:LABEL[pc.kind]):'空'}`);
+    if(pc)b.append(el('span',pc.promoted?PROMOTED[pc.kind]:LABEL[pc.kind],'piece'+(pc.promoted?' promoted':'')+(pc.owner===(view.flip?'sente':'gote')?' gote':'')));board.append(b);
+  }
+  wrap.append(board);area.append(wrap,hand(view.flip?'gote':'sente'));$('dialogBody').append(area);
+  $('dialogBody').append(el('p',record.evaluation===null?'評価値 未設定':'評価値 '+(record.evaluation>0?'+':'')+record.evaluation));
+  const comment=el('div',record.comment||'（コメントなし）','isolation-comment');comment.id='isolationComment';$('dialogBody').append(comment,button('一覧へ戻る',()=>checkIsolated(page,report)));
+}
 function download(name,obj){const a=document.createElement('a'),url=URL.createObjectURL(new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}));a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
 const stamp=()=>new Date().toISOString().replace(/[:.]/g,'-');
 function exportJSON(){validateDocument(data);download('shogi_stage18_1_'+stamp()+'.json',encodeDocument(data));}
@@ -199,7 +247,7 @@ function menu(){
   openDialog('保存・設定','menu');
   paletteSettings();
   $('dialogBody').append(el('p','端末には入力ごとに自動保存します。GitHubへの保存はオンライン時に操作してください。'));
-  const actions=el('div',undefined,'actions');actions.append(button('JSON書き出し（スキーマ3）',exportJSON,'primary'),button('端末バックアップ（履歴込み）',exportWorkspace),button('JSON取り込み',()=>{editable();$('importFile').click();}),button('GitHub読込・保存',githubPanel),button('新しい定跡',newOpening),button('定跡名を変更',renameOpening),button('置換前のデータを復元',restoreBeforeReplace),button('端末の保存保持を要求',requestPersistence));$('dialogBody').append(actions);
+  const actions=el('div',undefined,'actions');actions.append(button('JSON書き出し（スキーマ3）',exportJSON,'primary'),button('端末バックアップ（履歴込み）',exportWorkspace),button('JSON取り込み',()=>{editable();$('importFile').click();}),button('GitHub読込・保存',githubPanel),button('孤立局面チェック',()=>checkIsolated()),button('新しい定跡',newOpening),button('定跡名を変更',renameOpening),button('置換前のデータを復元',restoreBeforeReplace),button('端末の保存保持を要求',requestPersistence));$('dialogBody').append(actions);
   const status=sync.baselines?.[sync.config?destinationKey(sync.config):''];$('dialogBody').append(el('p',status?'GitHub保存: '+(status.signature===contentSignature(data)?'同期済み':'端末に未送信の変更があります'):'GitHub保存の基準は未設定です。'));
   $('dialogBody').append(el('p','iPhoneはSafariでHTTPSのページを開き、共有メニューからホーム画面に追加します。追加したアイコンから起動して「オフライン準備完了」を確認し、その画面でJSONを取り込んでください。'));
   if(view.draft)$('dialogBody').append(button('途中の編集を再開',()=>{const draft=view.draft;data.active_opening_id=data.positions[draft.pid].opening_id;const s=session();const i=s.positions.indexOf(draft.pid);if(i>=0)s.cursor=i;else view.sessions[data.active_opening_id]={positions:[draft.pid],moves:[],cursor:0};persist();render();editPosition(draft.kind);},'primary'));

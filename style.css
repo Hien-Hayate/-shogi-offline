@@ -62,3 +62,9 @@ dialog .evaluation-input-row input{min-width:0;flex:1}
 .hand::-webkit-scrollbar{display:none}
 .hand> *{flex:0 0 auto;white-space:nowrap}
 .play-area[data-board-style="pieces"] .hand{height:54px;min-height:54px;max-height:54px}
+.isolation-list{display:flex;flex-direction:column;gap:8px}
+.isolation-item{display:flex;flex-direction:column;gap:5px;width:100%;text-align:left;font-size:13px}
+.isolation-item strong{overflow-wrap:anywhere}
+.isolation-excerpt{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere}
+.isolation-preview .board button:disabled{opacity:1;cursor:default}
+.isolation-comment{white-space:pre-wrap;overflow-wrap:anywhere;font-size:16px;line-height:1.6;padding:10px;border:1px solid var(--line);border-radius:8px;background:#202629;max-height:12em;overflow:auto;margin:10px 0}
