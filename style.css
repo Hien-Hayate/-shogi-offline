@@ -49,9 +49,10 @@ dialog .evaluation-input-row input{min-width:0;flex:1}
 .tools button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:0;min-height:54px;padding:5px 2px;line-height:1.3}
 .tools button>span{display:block;max-width:100%}
 .tools .evaluation-label{font-size:11px}
-.tools .evaluation-value{font-size:16px;overflow-x:auto}
-.tools .evaluation-value[data-size="four"]{font-size:14px}
-.tools .evaluation-value[data-size="five"]{font-size:12px}
+.tools #editEval{grid-column:span 2;padding:4px 2px}
+.tools .evaluation-value{font-size:22px;overflow-x:auto}
+.tools .evaluation-value[data-size="four"]{font-size:22px}
+.tools .evaluation-value[data-size="five"]{font-size:22px}
 .tools .evaluation-value[data-size="long"]{font-size:10px}
 .position-notes{grid-template-columns:86px minmax(0,1fr);align-items:start}
 #candidates{display:flex;flex-direction:column;flex-wrap:nowrap;gap:6px;min-width:0;min-height:calc(9.6em + 16px);height:calc(9.6em + 16px);max-height:calc(9.6em + 16px);overflow-y:auto;padding:0;border:0;font-size:16px;align-items:stretch}

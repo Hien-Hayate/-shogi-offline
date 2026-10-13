@@ -44,7 +44,7 @@ function render(){
   $('playArea').dataset.boardStyle=view.boardStyle;$('boardStyle').textContent=view.boardStyle==='pieces'?'文字表示へ':'駒表示へ';$('boardStyle').setAttribute('aria-pressed',String(view.boardStyle==='pieces'));$('boardStyle').disabled=busy||storageError;
   $('playArea').dataset.boardPalette=view.boardPalette||'wood';
   const showArrows=view.showArrows!==false;$('arrowToggle').textContent=showArrows?'矢印ON':'矢印OFF';$('arrowToggle').setAttribute('aria-pressed',String(showArrows));$('arrowToggle').setAttribute('aria-label',showArrows?'矢印を非表示にする':'矢印を表示する');$('arrowToggle').disabled=busy||storageError;
-  $('turn').textContent=(p.turn==='sente'?'▲ 先手':'△ 後手')+'番 · '+s.cursor+'手の閲覧履歴'+(inCheck(p,p.turn)?' · 王手':'');
+  $('turn').textContent=(p.turn==='sente'?'▲ 先手':'△ 後手')+'番 · '+s.cursor+'手';
   $('back').disabled=s.cursor===0||busy;$('forward').disabled=s.cursor===s.positions.length-1||busy;
   $('files').replaceChildren(...Array.from({length:9},(_,i)=>el('span',view.flip?i+1:9-i)));
   const targets=selection?legalTargets(p,selection.source,selection.kind):[];
