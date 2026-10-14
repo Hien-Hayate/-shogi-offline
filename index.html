@@ -2,9 +2,9 @@
 <html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#111416"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="将棋定跡">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.github.com; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
-<title>将棋定跡研究室｜Stage18-1R</title><link rel="manifest" href="./manifest.webmanifest"><link rel="apple-touch-icon" href="./icon-192.png"><link rel="stylesheet" href="./style.css"></head>
+<title>将棋定跡研究室｜Stage18-1S</title><link rel="manifest" href="./manifest.webmanifest"><link rel="apple-touch-icon" href="./icon-192.png"><link rel="stylesheet" href="./style.css"></head>
 <body><main id="app">
-<header><div><small>盤上研究室 · Stage18-1R 暫定版</small><h1>将棋定跡研究室</h1></div><button id="menu" aria-label="データと設定を開く">保存・設定</button></header>
+<header><div><small>盤上研究室 · Stage18-1S 暫定版</small><h1>将棋定跡研究室</h1></div><button id="menu" aria-label="データと設定を開く">保存・設定</button></header>
 <div class="status"><span id="offline">オフライン準備中</span><span id="saved" role="status">起動中…</span></div>
 <div id="notice" role="alert" hidden></div>
 <label class="opening">定跡<select id="opening" disabled></select></label>
@@ -21,7 +21,7 @@
 <button type="button" id="forward" aria-label="履歴を進む" disabled><span aria-hidden="true">▶︎</span><span>進む</span></button>
 <button type="button" id="root" aria-label="初期盤面"><span>初期</span><span>盤面</span></button>
 <button type="button" id="attributes" aria-label="指し手属性を編集"><span>指し手</span><span>属性</span></button>
-<button type="button" id="editEval" class="evaluation-box" aria-label="局面評価値を編集"><span class="evaluation-label">評価値</span><span id="eval" class="evaluation-value">未設定</span></button>
+<button type="button" id="editEval" class="evaluation-box" aria-label="局面評価値を編集"><span id="evalLabel" class="evaluation-label">未評価</span><span id="eval" class="evaluation-value">未設定</span></button>
 </nav>
 <section class="position-notes" aria-label="候補手と局面コメント">
 <div id="candidates" class="candidates" aria-label="候補手"></div>

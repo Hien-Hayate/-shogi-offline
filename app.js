@@ -37,6 +37,13 @@ function persist({changed=false,backup=false}={}){
 }
 function navigate(pid,mid){const s=session();s.positions=s.positions.slice(0,s.cursor+1);s.moves=s.moves.slice(0,s.cursor);s.positions.push(pid);s.moves.push(mid);s.cursor++;selection=null;persist();render();}
 function boardPosition(){return parseSFEN(current().sfen);}
+// Display-only guide: scores always use the first player's perspective.
+function evaluationLabel(value){
+  if(value===null)return '未評価';
+  const magnitude=Math.abs(value);
+  if(magnitude<300)return '互角';
+  return (value>0?'先手':'後手')+(magnitude>=1500?'勝勢':magnitude>=800?'優勢':'有利');
+}
 function render(){
   if(!ready)return;
   const select=$('opening');select.replaceChildren();for(const o of Object.values(data.openings)){const option=el('option',o.name);option.value=o.opening_id;select.append(option);}select.value=data.active_opening_id;select.disabled=busy||storageError;
@@ -69,6 +76,7 @@ function render(){
   const comment=current().comment||'（コメントなし）',commentChanged=$('comment').dataset.position!==pid||$('commentText').textContent!==comment;
   $('commentText').textContent=comment;if(commentChanged)$('comment').scrollTop=0;$('comment').dataset.position=pid;
   const evaluation=current().evaluation,value=evaluation===null?'未設定':(evaluation>0?'+':'')+evaluation;
+  $('evalLabel').textContent=evaluationLabel(evaluation);
   $('eval').textContent=value;
   $('eval').dataset.size=evaluation===null||value.length<=4?'normal':value.length===5?'four':value.length===6?'five':'long';
   renderArrows(list);

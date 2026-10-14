@@ -48,7 +48,7 @@ dialog .evaluation-input-row input{min-width:0;flex:1}
 .tools{grid-template-columns:repeat(6,minmax(0,1fr));margin:6px 0;align-items:stretch}
 .tools button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:0;min-height:54px;padding:5px 2px;line-height:1.3}
 .tools button>span{display:block;max-width:100%}
-.tools .evaluation-label{font-size:11px}
+.tools .evaluation-label{font-size:14px;font-weight:600;white-space:nowrap;color:var(--green)}
 .tools #editEval{grid-column:span 2;padding:4px 2px}
 .tools .evaluation-value{font-size:22px;overflow-x:auto}
 .tools .evaluation-value[data-size="four"]{font-size:22px}
