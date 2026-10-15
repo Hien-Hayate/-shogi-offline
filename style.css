@@ -75,7 +75,7 @@ dialog .evaluation-input-row input{min-width:0;flex:1}
 .board-options button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;height:38px;min-height:38px;padding:3px 2px;line-height:1.25;white-space:nowrap}
 #boardStyle{width:60px}
 #flip{width:36px}
-#arrowToggle{width:56px}
+#root{width:56px}
 #graph{width:50px}
 .board-options .turn{flex:1 1 0;min-width:0;line-height:1.4}
 .board-options .turn span{display:inline-block;white-space:pre}

@@ -39,7 +39,11 @@ function persist({changed=false,backup=false}={}){
   const task=store.save(snapshot(),backup);
   task.then(()=>{if(n===saveNumber)$('saved').textContent=checkpoint?'端末に保存済み':'端末保存済み（復元補助なし）';}).catch(e=>{storageError=true;$('saved').textContent='端末保存に失敗';notice(e.message+'\n保存・設定からJSONを退避できます。');});return task;
 }
-function navigate(pid,mid){const s=session();s.positions=s.positions.slice(0,s.cursor+1);s.moves=s.moves.slice(0,s.cursor);s.positions.push(pid);s.moves.push(mid);s.cursor++;selection=null;persist();render();}
+function navigate(pid,mid,{animate=false}={}){
+  const after=animate?parseSFEN(data.positions[pid].sfen):null,flights=animate?prepareMoveAnimation(data.moves[mid],boardPosition(),after,1):[];
+  const s=session();s.positions=s.positions.slice(0,s.cursor+1);s.moves=s.moves.slice(0,s.cursor);s.positions.push(pid);s.moves.push(mid);s.cursor++;selection=null;persist();render();
+  if(flights.length)try{animateHistory(flights,after);}catch{cancelMoveAnimation();}
+}
 function boardPosition(){return parseSFEN(current().sfen);}
 // Display-only guide: scores always use the first player's perspective.
 function evaluationLabel(value){
@@ -76,7 +80,7 @@ function render(){
   renderHand('topHand',view.flip?'sente':'gote',p);renderHand('bottomHand',view.flip?'gote':'sente',p);
   const candidateChanged=$('candidates').dataset.position!==pid;
   $('candidates').replaceChildren();
-  for(const m of list){const b=button(moveLabel(m,p),()=>{editable();navigate(m.to_position_id,m.move_id);},m.move_type);b.dataset.move=m.move_id;if(m.move_type!=='normal')b.append(el('span',m.move_type==='main'?'本線':'悪手','badge'));$('candidates').append(b);}
+  for(const m of list){const b=button(moveLabel(m,p),()=>{editable();navigate(m.to_position_id,m.move_id,{animate:true});},m.move_type);b.dataset.move=m.move_id;if(m.move_type!=='normal')b.append(el('span',m.move_type==='main'?'本線':'悪手','badge'));$('candidates').append(b);}
   if(!list.length)$('candidates').append(el('span','登録手はありません。盤面から入力できます。','muted'));
   if(candidateChanged)$('candidates').scrollTop=0;$('candidates').dataset.position=pid;
   const comment=current().comment||'（コメントなし）',commentChanged=$('comment').dataset.position!==pid||$('commentText').textContent!==comment;
@@ -200,12 +204,15 @@ function animateHistory(flights,after){
     run.timer=setTimeout(()=>cancelMoveAnimation(run),300);
   }catch{cancelMoveAnimation(run);}
 }
+function prepareMoveAnimation(move,before,after,delta){
+  cancelMoveAnimation();
+  if(motionAllowed())try{return historyFlights(move,before,after,delta).map(f=>({...f,start:motionPiece(f.from)}));}catch{}
+  return [];
+}
 function moveHistory(delta){
   editable();const s=session(),next=s.cursor+delta;
   if(![-1,1].includes(delta)||next<0||next>=s.positions.length)return;
-  cancelMoveAnimation();const move=data.moves[s.moves[delta>0?s.cursor:s.cursor-1]];
-  const before=boardPosition(),after=parseSFEN(data.positions[s.positions[next]].sfen);let flights=[];
-  if(motionAllowed())try{flights=historyFlights(move,before,after,delta).map(f=>({...f,start:motionPiece(f.from)}));}catch{}
+  const move=data.moves[s.moves[delta>0?s.cursor:s.cursor-1]],after=parseSFEN(data.positions[s.positions[next]].sfen),flights=prepareMoveAnimation(move,boardPosition(),after,delta);
   s.cursor=next;selection=null;persist();render();
   if(flights.length)try{animateHistory(flights,after);}catch{cancelMoveAnimation();}
 }
@@ -344,7 +351,7 @@ function menu(){
 function animationSettings(){
   const b=button('',()=>{editable();view.animateMoves=view.animateMoves===false;persist();render();update();});
   function update(){b.textContent='駒アニメーション：'+(view.animateMoves===false?'OFF':'ON');b.setAttribute('aria-pressed',String(view.animateMoves!==false));b.disabled=busy||storageError;}
-  b.id='animationToggle';update();$('dialogBody').append(el('h2','戻る・進むの駒アニメーション'),b,el('p','約0.18秒で駒を動かします。端末の動きを減らす設定が有効な場合は動かしません。','hint'));
+  b.id='animationToggle';update();$('dialogBody').append(el('h2','駒アニメーション'),b,el('p','戻る・進む・候補手のタップで、約0.18秒で駒を動かします。端末の動きを減らす設定が有効な場合は動かしません。','hint'));
 }
 function paletteSettings(){
   $('dialogBody').append(el('h2','盤・駒の配色'));
