@@ -3,6 +3,7 @@ import {LocalStore} from './storage.js';
 import {destinationKey,readRemote,saveRemote,validateConfig} from './github.js';
 const $=id=>document.getElementById(id), svgNS='http://www.w3.org/2000/svg';
 const store=new LocalStore();let data,view,sync={},selection=null,ready=false,busy=false,storageError=false,saveNumber=0,dialogKind='',pendingImport=null,remoteCopy=null;
+let moveAnimation=null;
 function el(tag,text,cls){const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;}
 function button(text,fn,cls){const b=el('button',text,cls);b.onclick=()=>action(fn);return b;}
 function notice(msg){$('notice').textContent=msg;$('notice').hidden=!msg;}
@@ -14,9 +15,10 @@ function session(){return view.sessions[data.active_opening_id];}
 function boardPalettes(){return [{id:'wood',name:'木色・やわらか'}, {id:'crisp',name:'木色・くっきり'}, {id:'reverse',name:'明るい盤・濃い駒'}, {id:'natural',name:'淡い木色'}, {id:'walnut',name:'落ち着いた茶色'}];}
 const ARROW_MODES=[{id:'both',label:'両者ON'},{id:'sente',label:'先手ON'},{id:'gote',label:'後手ON'},{id:'none',label:'両者OFF'}];
 function arrowMode(v){return ARROW_MODES.some(m=>m.id===v?.arrowMode)?v.arrowMode:(v?.showArrows===false?'none':'both');}
-function resetView(d){return {sessions:Object.fromEntries(Object.values(d.openings).map(o=>[o.opening_id,{positions:[o.start_position_id],moves:[],cursor:0}])),flip:false,boardStyle:'text',boardPalette:'wood',arrowMode:'both',showArrows:true,draft:null};}
+function resetView(d){return {sessions:Object.fromEntries(Object.values(d.openings).map(o=>[o.opening_id,{positions:[o.start_position_id],moves:[],cursor:0}])),flip:false,boardStyle:'text',boardPalette:'wood',arrowMode:'both',showArrows:true,animateMoves:true,draft:null};}
 function normalizeView(d,v){
   const out=resetView(d);out.flip=!!v?.flip;out.boardStyle=v?.boardStyle==='pieces'?'pieces':'text';
+  out.animateMoves=v?.animateMoves!==false;
   out.arrowMode=arrowMode(v);out.showArrows=out.arrowMode!=='none';
   out.boardPalette=boardPalettes().some(p=>p.id===v?.boardPalette)?v.boardPalette:'wood';
   for(const [oid,o]of Object.entries(d.openings)){
@@ -46,8 +48,10 @@ function evaluationLabel(value){
   if(magnitude<300)return '互角';
   return (value>0?'先手':'後手')+(magnitude>=1500?'勝勢':magnitude>=800?'優勢':'有利');
 }
+function evaluationTone(value){return value>=300?'sente':value<=-300?'gote':'neutral';}
 function render(){
   if(!ready)return;
+  cancelMoveAnimation();
   const select=$('opening');select.replaceChildren();for(const o of Object.values(data.openings)){const option=el('option',o.name);option.value=o.opening_id;select.append(option);}select.value=data.active_opening_id;select.disabled=busy||storageError;
   const p=boardPosition(),pid=currentID(),s=session(),list=candidates(data,pid);
   $('playArea').dataset.boardStyle=view.boardStyle;$('boardStyle').replaceChildren(el('span',view.boardStyle==='pieces'?'文字':'駒'),el('span','表示へ'));$('boardStyle').setAttribute('aria-label',view.boardStyle==='pieces'?'文字表示へ':'駒表示へ');$('boardStyle').setAttribute('aria-pressed',String(view.boardStyle==='pieces'));$('boardStyle').disabled=busy||storageError;
@@ -80,6 +84,7 @@ function render(){
   const evaluation=current().evaluation,value=evaluation===null?'未設定':(evaluation>0?'+':'')+evaluation;
   $('evalLabel').textContent=evaluationLabel(evaluation);
   $('eval').textContent=value;
+  $('eval').dataset.advantage=evaluationTone(evaluation);
   $('eval').dataset.size=evaluation===null||value.length<=4?'normal':value.length===5?'four':value.length===6?'five':'long';
   renderArrows(list);
 }
@@ -132,10 +137,78 @@ function renderArrows(list){
     g.append(group);
   }
 }
-function redrawArrows(){if(ready)renderArrows(candidates(data,currentID()));}
+function redrawArrows(){cancelMoveAnimation();if(ready)renderArrows(candidates(data,currentID()));}
 window.addEventListener('resize',redrawArrows);
 $('topHand').addEventListener('scroll',redrawArrows,{passive:true});$('bottomHand').addEventListener('scroll',redrawArrows,{passive:true});
 if(typeof ResizeObserver!=='undefined'){const observer=new ResizeObserver(redrawArrows);observer.observe($('playArea'));}
+// Animation is a disposable visual overlay. History and persistence commit first.
+function cancelMoveAnimation(run=moveAnimation){
+  if(!run)return;
+  if(moveAnimation===run)moveAnimation=null;
+  clearTimeout(run.timer);
+  for(const animation of run.animations){animation.onfinish=null;animation.oncancel=null;try{animation.cancel();}catch{}}
+  for(const [node,visibility]of run.hidden)node.style.visibility=visibility;
+  for(const ghost of run.ghosts)ghost.remove();
+}
+function motionAllowed(){
+  return view.animateMoves!==false&&!document.hidden&&typeof $('playArea').animate==='function'&&typeof getComputedStyle==='function'&&!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+}
+function historyFlights(move,before,after,delta){
+  const board=sq=>({square:sq}),hand=kind=>({hand:{side:move.side,kind}});
+  const origin=move.source?board(move.source):hand(move.piece_kind),destination=board(move.destination);
+  const flights=[{role:'mover',from:delta>0?origin:destination,to:delta>0?destination:origin}];
+  const captured=(delta>0?before:after).board[move.destination[0]][move.destination[1]];
+  if(move.source&&captured)flights.push({role:'capture',from:delta>0?destination:hand(captured.kind),to:delta>0?hand(captured.kind):destination});
+  return flights;
+}
+function motionPiece(endpoint){
+  let container;
+  if(endpoint.square)container=Array.from($('board').children).find(n=>n.dataset.square===square(endpoint.square));
+  else{
+    const {side,kind}=endpoint.hand,hand=$((side===(view.flip?'gote':'sente'))?'bottomHand':'topHand');
+    container=Array.from(hand.children).find(n=>n.dataset.hand===kind);
+    if(!container)return null;
+    const rect=container.getBoundingClientRect(),bounds=hand.getBoundingClientRect(),center=rect.left+rect.width/2;
+    if(center<bounds.left||center>bounds.left+bounds.width)return null;
+  }
+  const node=Array.from(container?.children||[]).find(n=>n.className.split(/\s+/).includes(endpoint.square?'piece':'hand-piece'));
+  if(!node)return null;
+  const rect=node.getBoundingClientRect();
+  if(![rect.left,rect.top,rect.width,rect.height].every(Number.isFinite)||rect.width<=0||rect.height<=0)return null;
+  const computed=getComputedStyle(node),styles={};
+  for(const property of ['fontFamily','fontSize','fontWeight','fontStyle','lineHeight','color','backgroundColor','clipPath','display','alignItems','justifyContent','paddingTop','paddingRight','paddingBottom','paddingLeft','boxSizing','borderRadius','transform'])styles[property]=computed[property];
+  return {node,rect:{left:rect.left,top:rect.top,width:rect.width,height:rect.height},styles};
+}
+function animateHistory(flights,after){
+  const area=$('playArea').getBoundingClientRect(),plans=flights.map(f=>({...f,end:motionPiece(f.to)})).filter(f=>f.start&&f.end);
+  if(!plans.length||!area.width||!area.height)return;
+  const run={ghosts:[],hidden:[],animations:[],timer:null};moveAnimation=run;let remaining=plans.length;
+  try{
+    for(const plan of plans){
+      const {start,end}=plan,ghost=el('span',undefined,'move-flight'),image=start.node.cloneNode(true);
+      ghost.setAttribute('aria-hidden','true');ghost.dataset.role=plan.role;
+      Object.assign(image.style,start.styles,{width:'100%',height:'100%',margin:'0'});
+      Object.assign(ghost.style,{left:(start.rect.left-area.left)+'px',top:(start.rect.top-area.top)+'px',width:start.rect.width+'px',height:start.rect.height+'px',zIndex:plan.role==='mover'?'5':'4'});
+      ghost.append(image);run.ghosts.push(ghost);$('playArea').append(ghost);
+      // Keep an existing stack visible; counts already describe the final position.
+      if(plan.to.square||after.hands[plan.to.hand.side][plan.to.hand.kind]===1){run.hidden.push([end.node,end.node.style.visibility]);end.node.style.visibility='hidden';}
+      const dx=end.rect.left-start.rect.left,dy=end.rect.top-start.rect.top,sx=end.rect.width/start.rect.width,sy=end.rect.height/start.rect.height;
+      const animation=ghost.animate([{transform:'translate(0px,0px) scale(1,1)'},{transform:`translate(${dx}px,${dy}px) scale(${sx},${sy})`}],{duration:180,easing:'ease-out',fill:'forwards'});
+      run.animations.push(animation);animation.onfinish=()=>{if(--remaining===0)cancelMoveAnimation(run);};animation.oncancel=()=>cancelMoveAnimation(run);
+    }
+    // Also clean up if a browser suspends or loses an animation completion event.
+    run.timer=setTimeout(()=>cancelMoveAnimation(run),300);
+  }catch{cancelMoveAnimation(run);}
+}
+function moveHistory(delta){
+  editable();const s=session(),next=s.cursor+delta;
+  if(![-1,1].includes(delta)||next<0||next>=s.positions.length)return;
+  cancelMoveAnimation();const move=data.moves[s.moves[delta>0?s.cursor:s.cursor-1]];
+  const before=boardPosition(),after=parseSFEN(data.positions[s.positions[next]].sfen);let flights=[];
+  if(motionAllowed())try{flights=historyFlights(move,before,after,delta).map(f=>({...f,start:motionPiece(f.from)}));}catch{}
+  s.cursor=next;selection=null;persist();render();
+  if(flights.length)try{animateHistory(flights,after);}catch{cancelMoveAnimation();}
+}
 function tapSquare(r,c){
   editable();const p=boardPosition();
   if(selection&&legalTargets(p,selection.source,selection.kind).some(([rr,cc])=>rr===r&&cc===c)){
@@ -147,7 +220,7 @@ function tapSquare(r,c){
   const pc=p.board[r][c];if(pc?.owner===p.turn){selection=selection?.source?.[0]===r&&selection.source[1]===c?null:{source:[r,c],kind:pc.kind};render();}else{selection=null;render();}
 }
 function enterMove(m){editable();const result=registerMove(data,currentID(),m);if(result.added)data.updated_at=new Date().toISOString();navigate(result.pid,result.mid);}
-function openDialog(title,kind=''){dialogKind=kind;$('dialogBody').replaceChildren(el('h2',title));if(!$('dialog').open)$('dialog').showModal();}
+function openDialog(title,kind=''){cancelMoveAnimation();dialogKind=kind;$('dialogBody').replaceChildren(el('h2',title));if(!$('dialog').open)$('dialog').showModal();}
 function closeDialog(){$('dialog').close();$('dialogBody').replaceChildren();dialogKind='';}
 $('closeDialog').onclick=closeDialog;
 $('dialog').addEventListener('close',()=>{const token=$('ghToken');if(token)token.value='';});
@@ -261,12 +334,17 @@ function exportJSON(){validateDocument(data);download('shogi_stage18_1_'+stamp()
 async function exportWorkspace(){const payload={document:encodeDocument(data),view:copy(view)};download('shogi_workspace_stage18_1_'+stamp()+'.json',{format:'banjo_lab_shogi_offline_workspace',workspace_version:1,payload_sha256:await sha256(stableJSON(payload)),payload});}
 function menu(){
   openDialog('保存・設定','menu');
-  paletteSettings();
+  paletteSettings();animationSettings();
   $('dialogBody').append(el('p','端末には入力ごとに自動保存します。GitHubへの保存はオンライン時に操作してください。'));
   const actions=el('div',undefined,'actions');actions.append(button('JSON書き出し（スキーマ3）',exportJSON,'primary'),button('端末バックアップ（履歴込み）',exportWorkspace),button('JSON取り込み',()=>{editable();$('importFile').click();}),button('GitHub読込・保存',githubPanel),button('孤立局面チェック',()=>checkIsolated()),button('新しい定跡',newOpening),button('定跡名を変更',renameOpening),button('置換前のデータを復元',restoreBeforeReplace),button('端末の保存保持を要求',requestPersistence));$('dialogBody').append(actions);
   const status=sync.baselines?.[sync.config?destinationKey(sync.config):''];$('dialogBody').append(el('p',status?'GitHub保存: '+(status.signature===contentSignature(data)?'同期済み':'端末に未送信の変更があります'):'GitHub保存の基準は未設定です。'));
   $('dialogBody').append(el('p','iPhoneはSafariでHTTPSのページを開き、共有メニューからホーム画面に追加します。追加したアイコンから起動して「オフライン準備完了」を確認し、その画面でJSONを取り込んでください。'));
   if(view.draft)$('dialogBody').append(button('途中の編集を再開',()=>{const draft=view.draft;data.active_opening_id=data.positions[draft.pid].opening_id;const s=session();const i=s.positions.indexOf(draft.pid);if(i>=0)s.cursor=i;else view.sessions[data.active_opening_id]={positions:[draft.pid],moves:[],cursor:0};persist();render();editPosition(draft.kind);},'primary'));
+}
+function animationSettings(){
+  const b=button('',()=>{editable();view.animateMoves=view.animateMoves===false;persist();render();update();});
+  function update(){b.textContent='駒アニメーション：'+(view.animateMoves===false?'OFF':'ON');b.setAttribute('aria-pressed',String(view.animateMoves!==false));b.disabled=busy||storageError;}
+  b.id='animationToggle';update();$('dialogBody').append(el('h2','戻る・進むの駒アニメーション'),b,el('p','約0.18秒で駒を動かします。端末の動きを減らす設定が有効な場合は動かしません。','hint'));
 }
 function paletteSettings(){
   $('dialogBody').append(el('h2','盤・駒の配色'));
@@ -318,11 +396,11 @@ async function githubOperation(operation){
   }finally{const input=$('ghToken');if(input)input.value='';busy=false;render();}
 }
 $('menu').onclick=()=>action(menu);$('comment').onclick=()=>action(()=>editPosition('comment'));$('editEval').onclick=()=>action(()=>editPosition('evaluation'));$('attributes').onclick=()=>action(attributes);$('graph').onclick=()=>action(graph);
-$('back').onclick=()=>action(()=>{editable();session().cursor--;selection=null;persist();render();});$('forward').onclick=()=>action(()=>{editable();session().cursor++;selection=null;persist();render();});$('root').onclick=()=>action(goRoot);$('flip').onclick=()=>action(()=>{editable();view.flip=!view.flip;persist();render();});
+$('back').onclick=()=>action(()=>moveHistory(-1));$('forward').onclick=()=>action(()=>moveHistory(1));$('root').onclick=()=>action(goRoot);$('flip').onclick=()=>action(()=>{editable();view.flip=!view.flip;persist();render();});
 $('boardStyle').onclick=()=>action(()=>{editable();view.boardStyle=view.boardStyle==='pieces'?'text':'pieces';persist();render();});
 $('arrowToggle').onclick=()=>action(()=>{editable();view.arrowMode=ARROW_MODES[(ARROW_MODES.findIndex(m=>m.id===arrowMode(view))+1)%ARROW_MODES.length].id;view.showArrows=view.arrowMode!=='none';persist();render();});
 $('opening').onchange=()=>action(()=>{editable();data.active_opening_id=$('opening').value;selection=null;persist();render();});
-function onHide(){const input=$('ghToken');if(input)input.value='';if(ready&&!storageError)journal();}
+function onHide(){cancelMoveAnimation();const input=$('ghToken');if(input)input.value='';if(ready&&!storageError)journal();}
 document.addEventListener('visibilitychange',()=>{if(document.hidden)onHide();});window.addEventListener('pagehide',onHide);window.addEventListener('pageshow',()=>{if(ready)render();});
 function networkLabel(){if(!navigator.onLine)$('offline').textContent=$('offline').dataset.ready==='yes'?'オフライン動作中':'通信なし · 準備未確認';else if($('offline').dataset.ready==='yes')$('offline').textContent='オフライン準備完了';}
 window.addEventListener('online',networkLabel);window.addEventListener('offline',networkLabel);

@@ -80,3 +80,8 @@ dialog .evaluation-input-row input{min-width:0;flex:1}
 .board-options .turn{flex:1 1 0;min-width:0;line-height:1.4}
 .board-options .turn span{display:inline-block;white-space:pre}
 @media(max-width:360px){.board-options .turn{font-size:11px}}
+
+/* The sign belongs to the same value element and receives the same color. */
+.tools .evaluation-value[data-advantage="sente"]{color:#ffaaa4}
+.tools .evaluation-value[data-advantage="gote"]{color:#a6c8ff}
+.move-flight{position:absolute;display:block;pointer-events:none;transform-origin:top left;will-change:transform;user-select:none}
