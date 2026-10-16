@@ -336,13 +336,68 @@ function analyzeIsolation(d){
     return {opening_id:group.opening_id,name:group.name,start_position_id:group.start_position_id,start_position_found:found,position_count:group.positions.size,reachable_count:reachable.size,reachable_position_ids:[...reachable].sort(),orphan_position_ids:[...group.positions].filter(id=>!reachable.has(id)).sort(),orphan_count:group.positions.size-reachable.size};
   });
 }
+// Build a new document without mutating the source. Reachability is recomputed
+// for every request; no deletion decision is trusted from the displayed list.
+function planIsolationDelete(d,positionIDs=null){
+  const next=copy(d);validateDocument(next);
+  const report=analyzeIsolation(next);
+  if(report.some(r=>!r.start_position_found))throw new Error('開始局面を確認できないため、削除を中止しました');
+  const orphanIDs=report.flatMap(r=>r.orphan_position_ids),allowed=new Set(orphanIDs),ids=positionIDs===null?orphanIDs:[...new Set(positionIDs)];
+  if(!ids.length)throw new Error('削除する孤立局面はありません');
+  if(ids.some(id=>!allowed.has(id)))throw new Error('孤立局面ではない局面が含まれるため、削除を中止しました。チェックをやり直してください');
+  const removed=new Set(ids),moveIDs=[],sources=new Set();
+  for(const [id,m]of Object.entries(next.moves))if(removed.has(m.from_position_id)||removed.has(m.to_position_id)){
+    moveIDs.push(id);sources.add(m.from_position_id);delete next.moves[id];
+  }
+  for(const id of ids)delete next.positions[id];
+  for(const id of sources)if(next.positions[id]){
+    const list=candidates(next,id);if(list.some(m=>Object.hasOwn(m,'display_order')))list.forEach((m,i)=>m.display_order=i);
+  }
+  next.updated_at=new Date(Math.max(Date.now(),Date.parse(d.created_at),Date.parse(d.updated_at)+1)).toISOString();
+  validateDocument(next);
+  return {document:next,position_ids:ids,move_ids:moveIDs,openings:report.map(r=>({name:r.name,count:ids.filter(id=>d.positions[id].opening_id===r.opening_id).length})).filter(r=>r.count)};
+}
+function confirmIsolatedDelete(positionIDs=null,page=0){
+  editable();const plan=planIsolationDelete(data,positionIDs),signature=stableJSON({document:data,view}),nextView=normalizeView(plan.document,view);
+  openDialog('孤立局面の削除を確認','isolation-delete');
+  const summary=el('p',`孤立局面 ${plan.position_ids.length}件・関連する指し手 ${plan.move_ids.length}件を削除します。`);summary.id='isolationDeleteSummary';$('dialogBody').append(summary);
+  for(const group of plan.openings)$('dialogBody').append(el('p',`${group.name}：${group.count}局面`));
+  $('dialogBody').append(el('p','対象局面のコメント・評価値と、対象局面へ出入りする指し手も削除します。開始局面から到達できる局面は残します。'));
+  if(view.draft&&!nextView.draft)$('dialogBody').append(el('p','削除対象に未確定の編集入力があります。この入力も削除前の退避データに含めます。'));
+  if(stableJSON(view.sessions)!==stableJSON(nextView.sessions))$('dialogBody').append(el('p','削除対象を含む閲覧履歴は残っている局面まで短縮します。表示中の局面を削除する場合は履歴に残る直前の局面へ戻り、履歴の先頭も削除する場合は開始局面へ戻ります。'));
+  $('dialogBody').append(el('p','削除前の全定跡・閲覧履歴・設定・未確定入力を端末に1世代退避します。前回の孤立局面削除前の退避は置き換わります。「置換前のデータ」とは別に保持します。端末外にも残す場合は先にバックアップを書き出してください。'));
+  const actions=el('div',undefined,'actions'),save=button('削除前の端末バックアップを書き出す',exportWorkspace),cancel=button('削除せず一覧へ戻る',()=>checkIsolated(page));
+  const confirm=button('退避して削除する',async()=>{
+    editable();
+    if(stableJSON({document:data,view})!==signature)throw new Error('確認後にデータが変わったため、削除を中止しました。チェックをやり直してください');
+    const fresh=planIsolationDelete(data,plan.position_ids),updatedView=normalizeView(fresh.document,view);
+    busy=true;confirm.disabled=true;cancel.disabled=true;save.disabled=true;$('closeDialog').disabled=true;
+    cancelArrowReveal();cancelMoveAnimation();saveNumber++;$('saved').textContent='削除前の退避・削除結果を保存中…';
+    try{
+      // Both current and its full pre-delete snapshot commit in one transaction.
+      // The in-memory document changes only after that transaction succeeds.
+      await store.save({document:encodeDocument(fresh.document),view:copy(updatedView),sync:copy(sync)},'isolation-delete');
+    }catch(error){storageError=true;$('saved').textContent='端末保存に失敗';throw new Error('削除を完了できませんでした。削除前のデータを保持しています。'+error.message+'\n保存・設定からJSONを退避して、再読み込みしてください');}
+    finally{busy=false;$('closeDialog').disabled=false;confirm.disabled=storageError;cancel.disabled=false;save.disabled=false;}
+    data=fresh.document;view=updatedView;selection=null;
+    const checkpoint=journal();$('saved').textContent=checkpoint?'端末に保存済み':'端末保存済み（復元補助なし）';
+    render();checkIsolated(page);notice(`孤立局面 ${fresh.position_ids.length}件・指し手 ${fresh.move_ids.length}件を削除しました。孤立局面チェックから削除前のデータを復元できます。`);
+  },'danger');confirm.id='confirmIsolationDelete';actions.append(save,cancel,confirm);$('dialogBody').append(actions);
+}
+async function restoreBeforeIsolatedDelete(){
+  editable();const old=await store.read('before-isolation-delete');
+  if(!old)throw new Error('孤立局面削除前の退避データはありません');
+  confirmImport({d:decodeDocument(old.document),v:old.view,label:'孤立局面削除前の全定跡・閲覧履歴・設定（削除後の編集も置き換えます）'});
+}
 function checkIsolated(page=0,report=analyzeIsolation(data)){
   const list=report.flatMap(r=>r.orphan_position_ids.map(pid=>({report:r,pid}))),pages=Math.max(1,Math.ceil(list.length/50));page=Math.max(0,Math.min(page,pages-1));
   openDialog('孤立局面チェック','isolation');
   $('dialogBody').append(el('p','端末に読み込み済みの全定跡を確認します。開始局面から登録手を順方向にたどれない局面が対象です。チェックと盤面の確認ではデータや閲覧履歴を変更しません。'));
   const summary=el('p',`${report.length}定跡 · ${report.reduce((n,r)=>n+r.position_count,0)}局面 · 孤立局面 ${list.length}件`);summary.id='isolationSummary';$('dialogBody').append(summary);
   for(const r of report)$('dialogBody').append(el('p',`${r.name}：到達可能 ${r.reachable_count}／${r.position_count}局面 · 孤立 ${r.orphan_count}件`+(r.start_position_found?'':' · 開始局面を確認できません')));
+  const recovery=button('孤立局面削除前のデータを復元',restoreBeforeIsolatedDelete);recovery.id='restoreIsolationDelete';recovery.disabled=busy||storageError;$('dialogBody').append(recovery);
   if(!list.length){$('dialogBody').append(el('p','孤立局面はありません。'));return;}
+  const removeAll=button('孤立局面をすべて削除',()=>confirmIsolatedDelete(null,page),'danger');removeAll.id='deleteAllIsolated';removeAll.disabled=busy||storageError||report.some(r=>!r.start_position_found);$('dialogBody').append(removeAll);
   $('dialogBody').append(el('p','一覧をタップすると盤面・持ち駒・コメント・評価値を確認できます。'));
   const rows=el('div',undefined,'isolation-list');
   for(const entry of list.slice(page*50,(page+1)*50)){
@@ -370,6 +425,7 @@ function previewIsolated(entry,page,report){
   wrap.append(board);area.append(wrap,hand(view.flip?'gote':'sente'));$('dialogBody').append(area);
   $('dialogBody').append(el('p',record.evaluation===null?'評価値 未設定':'評価値 '+(record.evaluation>0?'+':'')+record.evaluation));
   const comment=el('div',record.comment||'（コメントなし）','isolation-comment');comment.id='isolationComment';$('dialogBody').append(comment,button('一覧へ戻る',()=>checkIsolated(page,report)));
+  const remove=button('この孤立局面を削除',()=>confirmIsolatedDelete([entry.pid],page),'danger');remove.id='deleteIsolatedPosition';remove.disabled=busy||storageError;$('dialogBody').append(remove);
 }
 function download(name,obj){const a=document.createElement('a'),url=URL.createObjectURL(new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}));a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
 const stamp=()=>new Date().toISOString().replace(/[:.]/g,'-');

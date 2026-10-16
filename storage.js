@@ -23,7 +23,8 @@ export class LocalStore {
         const tx=this.db.transaction('state','readwrite'),store=tx.objectStore('state'),req=store.get('current');
         let conflict=false;
         req.onsuccess=()=>{const old=req.result;if((old?.revision||0)!==revision){conflict=true;tx.abort();return;}
-          if(backup&&old)store.put(old,'before-replace');
+          // Isolated-position removal has its own single-generation recovery.
+          if(backup&&old)store.put(old,backup==='isolation-delete'?'before-isolation-delete':'before-replace');
           store.put({...data,revision:revision+1,savedAt:Date.now()},'current');
         };
         tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error||new Error('端末保存に失敗しました'));
