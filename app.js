@@ -183,10 +183,16 @@ function motionPiece(endpoint){
   for(const property of ['fontFamily','fontSize','fontWeight','fontStyle','lineHeight','color','backgroundColor','clipPath','display','alignItems','justifyContent','paddingTop','paddingRight','paddingBottom','paddingLeft','boxSizing','borderRadius','transform'])styles[property]=computed[property];
   return {node,rect:{left:rect.left,top:rect.top,width:rect.width,height:rect.height},styles};
 }
+function motionDuration(start,end,boardWidth){
+  // Use center travel in board-square units, including differently sized hand pieces.
+  const dx=end.left+end.width/2-start.left-start.width/2,dy=end.top+end.height/2-start.top-start.height/2;
+  return Math.max(1,Math.hypot(dx,dy)/(boardWidth/9)*180);
+}
 function animateHistory(flights,after){
   const area=$('playArea').getBoundingClientRect(),plans=flights.map(f=>({...f,end:motionPiece(f.to)})).filter(f=>f.start&&f.end);
-  if(!plans.length||!area.width||!area.height)return;
-  const run={ghosts:[],hidden:[],animations:[],timer:null};moveAnimation=run;let remaining=plans.length;
+  const boardWidth=$('board').getBoundingClientRect().width;
+  if(!plans.length||!area.width||!area.height||!boardWidth)return;
+  const run={ghosts:[],hidden:[],animations:[],timer:null};moveAnimation=run;let remaining=plans.length,maxDuration=0;
   try{
     for(const plan of plans){
       const {start,end}=plan,ghost=el('span',undefined,'move-flight'),image=start.node.cloneNode(true);
@@ -195,13 +201,22 @@ function animateHistory(flights,after){
       Object.assign(ghost.style,{left:(start.rect.left-area.left)+'px',top:(start.rect.top-area.top)+'px',width:start.rect.width+'px',height:start.rect.height+'px',zIndex:plan.role==='mover'?'5':'4'});
       ghost.append(image);run.ghosts.push(ghost);$('playArea').append(ghost);
       // Keep an existing stack visible; counts already describe the final position.
-      if(plan.to.square||after.hands[plan.to.hand.side][plan.to.hand.kind]===1){run.hidden.push([end.node,end.node.style.visibility]);end.node.style.visibility='hidden';}
+      let arrival=null;
+      if(plan.to.square||after.hands[plan.to.hand.side][plan.to.hand.kind]===1){arrival=[end.node,end.node.style.visibility];run.hidden.push(arrival);end.node.style.visibility='hidden';}
       const dx=end.rect.left-start.rect.left,dy=end.rect.top-start.rect.top,sx=end.rect.width/start.rect.width,sy=end.rect.height/start.rect.height;
-      const animation=ghost.animate([{transform:'translate(0px,0px) scale(1,1)'},{transform:`translate(${dx}px,${dy}px) scale(${sx},${sy})`}],{duration:180,easing:'ease-out',fill:'forwards'});
-      run.animations.push(animation);animation.onfinish=()=>{if(--remaining===0)cancelMoveAnimation(run);};animation.oncancel=()=>cancelMoveAnimation(run);
+      const duration=motionDuration(start.rect,end.rect,boardWidth);maxDuration=Math.max(maxDuration,duration);
+      const animation=ghost.animate([{transform:'translate(0px,0px) scale(1,1)'},{transform:`translate(${dx}px,${dy}px) scale(${sx},${sy})`}],{duration,easing:'linear',fill:'forwards'});
+      run.animations.push(animation);let finished=false;
+      animation.onfinish=()=>{
+        if(finished||moveAnimation!==run)return;finished=true;
+        animation.onfinish=null;animation.oncancel=null;
+        if(arrival)arrival[0].style.visibility=arrival[1];ghost.remove();
+        try{animation.cancel();}catch{}
+        if(--remaining===0)cancelMoveAnimation(run);
+      };animation.oncancel=()=>cancelMoveAnimation(run);
     }
     // Also clean up if a browser suspends or loses an animation completion event.
-    run.timer=setTimeout(()=>cancelMoveAnimation(run),300);
+    run.timer=setTimeout(()=>cancelMoveAnimation(run),maxDuration+120);
   }catch{cancelMoveAnimation(run);}
 }
 function prepareMoveAnimation(move,before,after,delta){
@@ -351,7 +366,7 @@ function menu(){
 function animationSettings(){
   const b=button('',()=>{editable();view.animateMoves=view.animateMoves===false;persist();render();update();});
   function update(){b.textContent='駒アニメーション：'+(view.animateMoves===false?'OFF':'ON');b.setAttribute('aria-pressed',String(view.animateMoves!==false));b.disabled=busy||storageError;}
-  b.id='animationToggle';update();$('dialogBody').append(el('h2','駒アニメーション'),b,el('p','戻る・進む・候補手のタップで、約0.18秒で駒を動かします。端末の動きを減らす設定が有効な場合は動かしません。','hint'));
+  b.id='animationToggle';update();$('dialogBody').append(el('h2','駒アニメーション'),b,el('p','戻る・進む・候補手のタップで、1マス分あたり約0.18秒の一定速度で駒を動かします。移動距離が長いほど時間が延びます。端末の動きを減らす設定が有効な場合は動かしません。','hint'));
 }
 function paletteSettings(){
   $('dialogBody').append(el('h2','盤・駒の配色'));
