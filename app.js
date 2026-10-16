@@ -40,7 +40,7 @@ function persist({changed=false,backup=false}={}){
   task.then(()=>{if(n===saveNumber)$('saved').textContent=checkpoint?'端末に保存済み':'端末保存済み（復元補助なし）';}).catch(e=>{storageError=true;$('saved').textContent='端末保存に失敗';notice(e.message+'\n保存・設定からJSONを退避できます。');});return task;
 }
 function navigate(pid,mid,{animate=false}={}){
-  const after=animate?parseSFEN(data.positions[pid].sfen):null,flights=animate?prepareMoveAnimation(data.moves[mid],boardPosition(),after,1):[];
+  const after=animate?parseSFEN(data.positions[pid].sfen):null,flights=animate?prepareMoveAnimation(data.moves[mid],1):[];
   const s=session();s.positions=s.positions.slice(0,s.cursor+1);s.moves=s.moves.slice(0,s.cursor);s.positions.push(pid);s.moves.push(mid);s.cursor++;selection=null;persist();render();
   if(flights.length)try{animateHistory(flights,after);}catch{cancelMoveAnimation();}
 }
@@ -157,12 +157,10 @@ function cancelMoveAnimation(run=moveAnimation){
 function motionAllowed(){
   return view.animateMoves!==false&&!document.hidden&&typeof $('playArea').animate==='function'&&typeof getComputedStyle==='function'&&!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 }
-function historyFlights(move,before,after,delta){
+function historyFlights(move,delta){
   const board=sq=>({square:sq}),hand=kind=>({hand:{side:move.side,kind}});
   const origin=move.source?board(move.source):hand(move.piece_kind),destination=board(move.destination);
   const flights=[{role:'mover',from:delta>0?origin:destination,to:delta>0?destination:origin}];
-  const captured=(delta>0?before:after).board[move.destination[0]][move.destination[1]];
-  if(move.source&&captured)flights.push({role:'capture',from:delta>0?destination:hand(captured.kind),to:delta>0?hand(captured.kind):destination});
   return flights;
 }
 function motionPiece(endpoint){
@@ -183,16 +181,10 @@ function motionPiece(endpoint){
   for(const property of ['fontFamily','fontSize','fontWeight','fontStyle','lineHeight','color','backgroundColor','clipPath','display','alignItems','justifyContent','paddingTop','paddingRight','paddingBottom','paddingLeft','boxSizing','borderRadius','transform'])styles[property]=computed[property];
   return {node,rect:{left:rect.left,top:rect.top,width:rect.width,height:rect.height},styles};
 }
-function motionDuration(start,end,boardWidth){
-  // Use center travel in board-square units, including differently sized hand pieces.
-  const dx=end.left+end.width/2-start.left-start.width/2,dy=end.top+end.height/2-start.top-start.height/2;
-  return Math.max(1,Math.hypot(dx,dy)/(boardWidth/9)*180);
-}
 function animateHistory(flights,after){
-  const area=$('playArea').getBoundingClientRect(),plans=flights.map(f=>({...f,end:motionPiece(f.to)})).filter(f=>f.start&&f.end);
-  const boardWidth=$('board').getBoundingClientRect().width;
-  if(!plans.length||!area.width||!area.height||!boardWidth)return;
-  const run={ghosts:[],hidden:[],animations:[],timer:null};moveAnimation=run;let remaining=plans.length,maxDuration=0;
+  const duration=300,area=$('playArea').getBoundingClientRect(),plans=flights.map(f=>({...f,end:motionPiece(f.to)})).filter(f=>f.start&&f.end);
+  if(!plans.length||!area.width||!area.height)return;
+  const run={ghosts:[],hidden:[],animations:[],timer:null};moveAnimation=run;let remaining=plans.length;
   try{
     for(const plan of plans){
       const {start,end}=plan,ghost=el('span',undefined,'move-flight'),image=start.node.cloneNode(true);
@@ -204,8 +196,7 @@ function animateHistory(flights,after){
       let arrival=null;
       if(plan.to.square||after.hands[plan.to.hand.side][plan.to.hand.kind]===1){arrival=[end.node,end.node.style.visibility];run.hidden.push(arrival);end.node.style.visibility='hidden';}
       const dx=end.rect.left-start.rect.left,dy=end.rect.top-start.rect.top,sx=end.rect.width/start.rect.width,sy=end.rect.height/start.rect.height;
-      const duration=motionDuration(start.rect,end.rect,boardWidth);maxDuration=Math.max(maxDuration,duration);
-      const animation=ghost.animate([{transform:'translate(0px,0px) scale(1,1)'},{transform:`translate(${dx}px,${dy}px) scale(${sx},${sy})`}],{duration,easing:'linear',fill:'forwards'});
+      const animation=ghost.animate([{transform:'translate(0px,0px) scale(1,1)'},{transform:`translate(${dx}px,${dy}px) scale(${sx},${sy})`}],{duration,easing:'ease-out',fill:'forwards'});
       run.animations.push(animation);let finished=false;
       animation.onfinish=()=>{
         if(finished||moveAnimation!==run)return;finished=true;
@@ -216,18 +207,18 @@ function animateHistory(flights,after){
       };animation.oncancel=()=>cancelMoveAnimation(run);
     }
     // Also clean up if a browser suspends or loses an animation completion event.
-    run.timer=setTimeout(()=>cancelMoveAnimation(run),maxDuration+120);
+    run.timer=setTimeout(()=>cancelMoveAnimation(run),duration+120);
   }catch{cancelMoveAnimation(run);}
 }
-function prepareMoveAnimation(move,before,after,delta){
+function prepareMoveAnimation(move,delta){
   cancelMoveAnimation();
-  if(motionAllowed())try{return historyFlights(move,before,after,delta).map(f=>({...f,start:motionPiece(f.from)}));}catch{}
+  if(motionAllowed())try{return historyFlights(move,delta).map(f=>({...f,start:motionPiece(f.from)}));}catch{}
   return [];
 }
 function moveHistory(delta){
   editable();const s=session(),next=s.cursor+delta;
   if(![-1,1].includes(delta)||next<0||next>=s.positions.length)return;
-  const move=data.moves[s.moves[delta>0?s.cursor:s.cursor-1]],after=parseSFEN(data.positions[s.positions[next]].sfen),flights=prepareMoveAnimation(move,boardPosition(),after,delta);
+  const move=data.moves[s.moves[delta>0?s.cursor:s.cursor-1]],after=parseSFEN(data.positions[s.positions[next]].sfen),flights=prepareMoveAnimation(move,delta);
   s.cursor=next;selection=null;persist();render();
   if(flights.length)try{animateHistory(flights,after);}catch{cancelMoveAnimation();}
 }
@@ -366,7 +357,7 @@ function menu(){
 function animationSettings(){
   const b=button('',()=>{editable();view.animateMoves=view.animateMoves===false;persist();render();update();});
   function update(){b.textContent='駒アニメーション：'+(view.animateMoves===false?'OFF':'ON');b.setAttribute('aria-pressed',String(view.animateMoves!==false));b.disabled=busy||storageError;}
-  b.id='animationToggle';update();$('dialogBody').append(el('h2','駒アニメーション'),b,el('p','戻る・進む・候補手のタップで、1マス分あたり約0.18秒の一定速度で駒を動かします。移動距離が長いほど時間が延びます。端末の動きを減らす設定が有効な場合は動かしません。','hint'));
+  b.id='animationToggle';update();$('dialogBody').append(el('h2','駒アニメーション'),b,el('p','戻る・進む・候補手のタップで、距離によらず約0.30秒で駒を動かします。取られた駒はすぐに駒台へ移します。端末の動きを減らす設定が有効な場合は動かしません。','hint'));
 }
 function paletteSettings(){
   $('dialogBody').append(el('h2','盤・駒の配色'));
