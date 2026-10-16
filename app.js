@@ -3,7 +3,7 @@ import {LocalStore} from './storage.js';
 import {destinationKey,readRemote,saveRemote,validateConfig} from './github.js';
 const $=id=>document.getElementById(id), svgNS='http://www.w3.org/2000/svg';
 const store=new LocalStore();let data,view,sync={},selection=null,ready=false,busy=false,storageError=false,saveNumber=0,dialogKind='',pendingImport=null,remoteCopy=null;
-let moveAnimation=null;
+let moveAnimation=null,arrowReveal=null,renderedPosition=null;
 function el(tag,text,cls){const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;}
 function button(text,fn,cls){const b=el('button',text,cls);b.onclick=()=>action(fn);return b;}
 function notice(msg){$('notice').textContent=msg;$('notice').hidden=!msg;}
@@ -15,10 +15,13 @@ function session(){return view.sessions[data.active_opening_id];}
 function boardPalettes(){return [{id:'wood',name:'木色・やわらか'}, {id:'crisp',name:'木色・くっきり'}, {id:'reverse',name:'明るい盤・濃い駒'}, {id:'natural',name:'淡い木色'}, {id:'walnut',name:'落ち着いた茶色'}];}
 const ARROW_MODES=[{id:'both',label:'両者ON'},{id:'sente',label:'先手ON'},{id:'gote',label:'後手ON'},{id:'none',label:'両者OFF'}];
 function arrowMode(v){return ARROW_MODES.some(m=>m.id===v?.arrowMode)?v.arrowMode:(v?.showArrows===false?'none':'both');}
-function resetView(d){return {sessions:Object.fromEntries(Object.values(d.openings).map(o=>[o.opening_id,{positions:[o.start_position_id],moves:[],cursor:0}])),flip:false,boardStyle:'text',boardPalette:'wood',arrowMode:'both',showArrows:true,animateMoves:true,draft:null};}
+const TIMING_OPTIONS=[0,150,300,600];
+function moveDuration(v){return TIMING_OPTIONS.includes(v?.moveDurationMs)?v.moveDurationMs:(v?.animateMoves===false?0:300);}
+function arrowDelay(v){return TIMING_OPTIONS.includes(v?.arrowDelayMs)?v.arrowDelayMs:300;}
+function resetView(d){return {sessions:Object.fromEntries(Object.values(d.openings).map(o=>[o.opening_id,{positions:[o.start_position_id],moves:[],cursor:0}])),flip:false,boardStyle:'text',boardPalette:'wood',arrowMode:'both',showArrows:true,animateMoves:true,moveDurationMs:300,arrowDelayMs:300,draft:null};}
 function normalizeView(d,v){
   const out=resetView(d);out.flip=!!v?.flip;out.boardStyle=v?.boardStyle==='pieces'?'pieces':'text';
-  out.animateMoves=v?.animateMoves!==false;
+  out.moveDurationMs=moveDuration(v);out.arrowDelayMs=arrowDelay(v);out.animateMoves=out.moveDurationMs>0;
   out.arrowMode=arrowMode(v);out.showArrows=out.arrowMode!=='none';
   out.boardPalette=boardPalettes().some(p=>p.id===v?.boardPalette)?v.boardPalette:'wood';
   for(const [oid,o]of Object.entries(d.openings)){
@@ -40,9 +43,10 @@ function persist({changed=false,backup=false}={}){
   task.then(()=>{if(n===saveNumber)$('saved').textContent=checkpoint?'端末に保存済み':'端末保存済み（復元補助なし）';}).catch(e=>{storageError=true;$('saved').textContent='端末保存に失敗';notice(e.message+'\n保存・設定からJSONを退避できます。');});return task;
 }
 function navigate(pid,mid,{animate=false}={}){
+  const gate=beginArrowTransition();
   const after=animate?parseSFEN(data.positions[pid].sfen):null,flights=animate?prepareMoveAnimation(data.moves[mid],1):[];
-  const s=session();s.positions=s.positions.slice(0,s.cursor+1);s.moves=s.moves.slice(0,s.cursor);s.positions.push(pid);s.moves.push(mid);s.cursor++;selection=null;persist();render();
-  if(flights.length)try{animateHistory(flights,after);}catch{cancelMoveAnimation();}
+  const s=session();s.positions=s.positions.slice(0,s.cursor+1);s.moves=s.moves.slice(0,s.cursor);s.positions.push(pid);s.moves.push(mid);s.cursor++;selection=null;gate.position=visualPositionKey();persist();render();
+  finishVisualStep(flights,after,gate);
 }
 function boardPosition(){return parseSFEN(current().sfen);}
 // Display-only guide: scores always use the first player's perspective.
@@ -55,7 +59,7 @@ function evaluationLabel(value){
 function evaluationTone(value){return value>=300?'sente':value<=-300?'gote':'neutral';}
 function render(){
   if(!ready)return;
-  cancelMoveAnimation();
+  const revealAfterRender=prepareArrowRender();cancelMoveAnimation();
   const select=$('opening');select.replaceChildren();for(const o of Object.values(data.openings)){const option=el('option',o.name);option.value=o.opening_id;select.append(option);}select.value=data.active_opening_id;select.disabled=busy||storageError;
   const p=boardPosition(),pid=currentID(),s=session(),list=candidates(data,pid);
   $('playArea').dataset.boardStyle=view.boardStyle;$('boardStyle').replaceChildren(el('span',view.boardStyle==='pieces'?'文字':'駒'),el('span','表示へ'));$('boardStyle').setAttribute('aria-label',view.boardStyle==='pieces'?'文字表示へ':'駒表示へ');$('boardStyle').setAttribute('aria-pressed',String(view.boardStyle==='pieces'));$('boardStyle').disabled=busy||storageError;
@@ -90,7 +94,7 @@ function render(){
   $('eval').textContent=value;
   $('eval').dataset.advantage=evaluationTone(evaluation);
   $('eval').dataset.size=evaluation===null||value.length<=4?'normal':value.length===5?'four':value.length===6?'five':'long';
-  renderArrows(list);
+  renderArrows(list);if(revealAfterRender)completeArrowTransition(revealAfterRender);
 }
 function renderHand(id,side,p){
   const wrap=$(id);wrap.replaceChildren(el('b',side==='sente'?'先手':'後手'));let count=0;
@@ -101,8 +105,8 @@ function renderHand(id,side,p){
 function renderArrows(list){
   const g=$('arrowLines');g.replaceChildren();
   const mode=arrowMode(view);
-  $('arrows').setAttribute('visibility',mode==='none'?'hidden':'visible');
-  if(mode==='none')return;
+  $('arrows').setAttribute('visibility',mode==='none'||arrowReveal?'hidden':'visible');
+  if(mode==='none'||arrowReveal)return;
   // One overlay spans both hands and the board. Actual element rectangles keep
   // drop arrows aligned when the hand row scrolls or the board is flipped.
   const area=$('playArea').getBoundingClientRect(),board=$('board').getBoundingClientRect();
@@ -141,6 +145,29 @@ function renderArrows(list){
     g.append(group);
   }
 }
+// A transition owns its arrow reveal. Old completions/timers cannot reveal a newer position.
+function visualPositionKey(){const s=session();return JSON.stringify([data.created_at,data.active_opening_id,currentID(),current().sfen,s.cursor,s.cursor?s.moves[s.cursor-1]:null]);}
+function cancelArrowReveal(){if(arrowReveal)clearTimeout(arrowReveal.timer);arrowReveal=null;}
+function beginArrowTransition(position=null){
+  cancelArrowReveal();const gate={position,phase:'moving',timer:null};arrowReveal=gate;
+  $('arrowLines').replaceChildren();$('arrows').setAttribute('visibility','hidden');return gate;
+}
+function prepareArrowRender(){
+  const position=visualPositionKey();let settle=null;
+  if(renderedPosition!==null&&renderedPosition!==position&&arrowReveal?.position!==position)settle=beginArrowTransition(position);
+  renderedPosition=position;return settle;
+}
+function completeArrowTransition(gate){
+  if(!gate||arrowReveal!==gate||gate.phase!=='moving')return;
+  gate.phase='waiting';
+  const reveal=()=>{if(arrowReveal!==gate||document.hidden||visualPositionKey()!==gate.position)return;arrowReveal=null;renderArrows(candidates(data,currentID()));};
+  const delay=arrowDelay(view);if(delay===0)reveal();else gate.timer=setTimeout(reveal,delay);
+}
+function restartArrowWait(){const gate=arrowReveal;if(gate?.phase==='waiting'){clearTimeout(gate.timer);gate.phase='moving';completeArrowTransition(gate);}}
+function finishVisualStep(flights,after,gate){
+  let started=false;if(flights.length)try{started=animateHistory(flights,after,gate);}catch{cancelMoveAnimation();}
+  if(!started)completeArrowTransition(gate);
+}
 function redrawArrows(){cancelMoveAnimation();if(ready)renderArrows(candidates(data,currentID()));}
 window.addEventListener('resize',redrawArrows);
 $('topHand').addEventListener('scroll',redrawArrows,{passive:true});$('bottomHand').addEventListener('scroll',redrawArrows,{passive:true});
@@ -153,9 +180,10 @@ function cancelMoveAnimation(run=moveAnimation){
   for(const animation of run.animations){animation.onfinish=null;animation.oncancel=null;try{animation.cancel();}catch{}}
   for(const [node,visibility]of run.hidden)node.style.visibility=visibility;
   for(const ghost of run.ghosts)ghost.remove();
+  const settle=run.onSettled;run.onSettled=null;settle?.();
 }
 function motionAllowed(){
-  return view.animateMoves!==false&&!document.hidden&&typeof $('playArea').animate==='function'&&typeof getComputedStyle==='function'&&!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  return moveDuration(view)>0&&!document.hidden&&typeof $('playArea').animate==='function'&&typeof getComputedStyle==='function'&&!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 }
 function historyFlights(move,delta){
   const board=sq=>({square:sq}),hand=kind=>({hand:{side:move.side,kind}});
@@ -181,10 +209,10 @@ function motionPiece(endpoint){
   for(const property of ['fontFamily','fontSize','fontWeight','fontStyle','lineHeight','color','backgroundColor','clipPath','display','alignItems','justifyContent','paddingTop','paddingRight','paddingBottom','paddingLeft','boxSizing','borderRadius','transform'])styles[property]=computed[property];
   return {node,rect:{left:rect.left,top:rect.top,width:rect.width,height:rect.height},styles};
 }
-function animateHistory(flights,after){
-  const duration=300,area=$('playArea').getBoundingClientRect(),plans=flights.map(f=>({...f,end:motionPiece(f.to)})).filter(f=>f.start&&f.end);
-  if(!plans.length||!area.width||!area.height)return;
-  const run={ghosts:[],hidden:[],animations:[],timer:null};moveAnimation=run;let remaining=plans.length;
+function animateHistory(flights,after,gate){
+  const duration=moveDuration(view),area=$('playArea').getBoundingClientRect(),plans=flights.map(f=>({...f,end:motionPiece(f.to)})).filter(f=>f.start&&f.end);
+  if(!plans.length||!area.width||!area.height||duration===0)return false;
+  const run={ghosts:[],hidden:[],animations:[],timer:null,onSettled:()=>completeArrowTransition(gate)};moveAnimation=run;let remaining=plans.length;
   try{
     for(const plan of plans){
       const {start,end}=plan,ghost=el('span',undefined,'move-flight'),image=start.node.cloneNode(true);
@@ -209,6 +237,7 @@ function animateHistory(flights,after){
     // Also clean up if a browser suspends or loses an animation completion event.
     run.timer=setTimeout(()=>cancelMoveAnimation(run),duration+120);
   }catch{cancelMoveAnimation(run);}
+  return true;
 }
 function prepareMoveAnimation(move,delta){
   cancelMoveAnimation();
@@ -218,9 +247,10 @@ function prepareMoveAnimation(move,delta){
 function moveHistory(delta){
   editable();const s=session(),next=s.cursor+delta;
   if(![-1,1].includes(delta)||next<0||next>=s.positions.length)return;
+  const gate=beginArrowTransition();
   const move=data.moves[s.moves[delta>0?s.cursor:s.cursor-1]],after=parseSFEN(data.positions[s.positions[next]].sfen),flights=prepareMoveAnimation(move,delta);
-  s.cursor=next;selection=null;persist();render();
-  if(flights.length)try{animateHistory(flights,after);}catch{cancelMoveAnimation();}
+  s.cursor=next;selection=null;gate.position=visualPositionKey();persist();render();
+  finishVisualStep(flights,after,gate);
 }
 function tapSquare(r,c){
   editable();const p=boardPosition();
@@ -355,9 +385,15 @@ function menu(){
   if(view.draft)$('dialogBody').append(button('途中の編集を再開',()=>{const draft=view.draft;data.active_opening_id=data.positions[draft.pid].opening_id;const s=session();const i=s.positions.indexOf(draft.pid);if(i>=0)s.cursor=i;else view.sessions[data.active_opening_id]={positions:[draft.pid],moves:[],cursor:0};persist();render();editPosition(draft.kind);},'primary'));
 }
 function animationSettings(){
-  const b=button('',()=>{editable();view.animateMoves=view.animateMoves===false;persist();render();update();});
-  function update(){b.textContent='駒アニメーション：'+(view.animateMoves===false?'OFF':'ON');b.setAttribute('aria-pressed',String(view.animateMoves!==false));b.disabled=busy||storageError;}
-  b.id='animationToggle';update();$('dialogBody').append(el('h2','駒アニメーション'),b,el('p','戻る・進む・候補手のタップで、距離によらず約0.30秒で駒を動かします。取られた駒はすぐに駒台へ移します。端末の動きを減らす設定が有効な場合は動かしません。','hint'));
+  $('dialogBody').append(el('h2','動きと矢印のタイミング'));
+  for(const [id,field,label]of [['moveTimeSelect','moveDurationMs','駒の移動時間'],['arrowDelaySelect','arrowDelayMs','移動後の矢印待ち時間']]){
+    const row=el('label',label),select=el('select');select.id=id;select.setAttribute('aria-label',label);
+    for(const ms of TIMING_OPTIONS){const option=el('option',ms===0?(field==='moveDurationMs'?'0秒（アニメーションなし）':'0秒（待ち時間なし）'):(ms/1000).toFixed(2)+'秒');option.value=String(ms);select.append(option);}
+    const value=()=>field==='moveDurationMs'?moveDuration(view):arrowDelay(view);select.value=String(value());select.disabled=busy||storageError;
+    select.onchange=()=>action(()=>{editable();const ms=Number(select.value);if(!TIMING_OPTIONS.some(t=>String(t)===select.value)){select.value=String(value());throw new Error('時間は選択肢から選んでください');}view[field]=ms;view.animateMoves=moveDuration(view)>0;persist();render();if(field==='arrowDelayMs')restartArrowWait();});
+    row.append(select);$('dialogBody').append(row);
+  }
+  $('dialogBody').append(el('p','戻る・進む・候補手のタップに共通です。矢印は駒が止まってから指定時間を待って表示します。取られた駒はすぐに駒台へ移します。端末の動きを減らす設定では駒を動かさず、その後の待ち時間だけを使います。選択は端末に保存します。','hint'));
 }
 function paletteSettings(){
   $('dialogBody').append(el('h2','盤・駒の配色'));
@@ -413,7 +449,7 @@ $('back').onclick=()=>action(()=>moveHistory(-1));$('forward').onclick=()=>actio
 $('boardStyle').onclick=()=>action(()=>{editable();view.boardStyle=view.boardStyle==='pieces'?'text':'pieces';persist();render();});
 $('arrowToggle').onclick=()=>action(()=>{editable();view.arrowMode=ARROW_MODES[(ARROW_MODES.findIndex(m=>m.id===arrowMode(view))+1)%ARROW_MODES.length].id;view.showArrows=view.arrowMode!=='none';persist();render();});
 $('opening').onchange=()=>action(()=>{editable();data.active_opening_id=$('opening').value;selection=null;persist();render();});
-function onHide(){cancelMoveAnimation();const input=$('ghToken');if(input)input.value='';if(ready&&!storageError)journal();}
+function onHide(){cancelArrowReveal();cancelMoveAnimation();const input=$('ghToken');if(input)input.value='';if(ready&&!storageError)journal();}
 document.addEventListener('visibilitychange',()=>{if(document.hidden)onHide();});window.addEventListener('pagehide',onHide);window.addEventListener('pageshow',()=>{if(ready)render();});
 function networkLabel(){if(!navigator.onLine)$('offline').textContent=$('offline').dataset.ready==='yes'?'オフライン動作中':'通信なし · 準備未確認';else if($('offline').dataset.ready==='yes')$('offline').textContent='オフライン準備完了';}
 window.addEventListener('online',networkLabel);window.addEventListener('offline',networkLabel);
